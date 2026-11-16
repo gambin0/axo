@@ -1,0 +1,21 @@
+{
+  "name": "critter-corner",
+  "version": "1.0.0",
+  "description": "Virtual pet app: an axolotl aquarium and an ant farm, in procedural pixel art.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "icons": "GEN_ICONS=1 vitest run src/tests/icons.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0"
+  }
+}
