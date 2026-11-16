@@ -7,16 +7,40 @@ import { AntHabitat } from './pets/ants/farm';
 import { drawAxolotl } from './pets/axolotl/art';
 import { MORPHS, type Morph } from './pets/axolotl/model';
 import { AxolotlHabitat } from './pets/axolotl/tank';
-import type { Habitat } from './pets/types';
+import { ButterflyHabitat } from './pets/butterfly/jar';
+import { PondHabitat } from './pets/pond/pond';
+import type { Habitat, PetId } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
 import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
 
-type PetId = Habitat['id'];
+interface PetInfo {
+  title: string;
+  kind: string;
+  defaultName: string;
+  ask: string;
+  create(saved: unknown, seed: number): Habitat;
+}
 
-const PETS: Record<PetId, { title: string; kind: string; defaultName: string; ask: string }> = {
-  axolotl: { title: 'Aquarium', kind: 'axolotl', defaultName: 'Mochi', ask: 'What will you call your axolotl?' },
-  ants: { title: 'Ant Farm', kind: 'ant colony', defaultName: 'Antsville', ask: 'What will you call your ant colony?' },
+/** Every pet in the app. Adding one here is all the shell needs. */
+const PETS: Record<PetId, PetInfo> = {
+  axolotl: {
+    title: 'Aquarium', kind: 'axolotl', defaultName: 'Mochi', ask: 'What will you call your axolotl?',
+    create: (saved, seed) => new AxolotlHabitat(saved, seed),
+  },
+  ants: {
+    title: 'Ant Farm', kind: 'ant colony', defaultName: 'Antsville', ask: 'What will you call your ant colony?',
+    create: (saved, seed) => new AntHabitat(saved, seed),
+  },
+  butterfly: {
+    title: 'Butterfly Jar', kind: 'butterfly jar', defaultName: 'Flutter', ask: 'What will you call your caterpillar?',
+    create: (saved, seed) => new ButterflyHabitat(saved, seed),
+  },
+  pond: {
+    title: 'Tadpole Pond', kind: 'pond', defaultName: 'Lily Pond', ask: 'What will you call your pond?',
+    create: (saved, seed) => new PondHabitat(saved, seed),
+  },
 };
+const PET_IDS = Object.keys(PETS) as PetId[];
 
 const clock = realClock;
 const debug = new URLSearchParams(location.search).has('debug');
@@ -25,10 +49,8 @@ const newSeed = () => (Date.now() ^ Math.floor(Math.random() * 0xffffffff)) >>> 
 // ---- state ---------------------------------------------------------------
 
 const save: SaveData = loadSave(localStorage) ?? freshSave(clock.now());
-const habitats: Record<PetId, Habitat> = {
-  axolotl: new AxolotlHabitat(save.axolotl, newSeed()),
-  ants: new AntHabitat(save.ants, newSeed()),
-};
+const habitats = {} as Record<PetId, Habitat>;
+for (const id of PET_IDS) habitats[id] = PETS[id].create(save.pets[id] ?? null, newSeed());
 const sound = new Sound();
 sound.enabled = save.settings.sound;
 const toasts = new Toasts();
@@ -41,8 +63,8 @@ function persist(): void {
   save.lastSeen = clock.now();
   save.settings.sound = sound.enabled;
   // A pet is only saved once it has been named, i.e. adopted.
-  save.axolotl = habitats.axolotl.name ? habitats.axolotl.serialize() : null;
-  save.ants = habitats.ants.name ? habitats.ants.serialize() : null;
+  save.pets = {};
+  for (const id of PET_IDS) if (habitats[id].name) save.pets[id] = habitats[id].serialize();
   writeSave(localStorage, save);
 }
 
@@ -66,7 +88,7 @@ const app = document.getElementById('app')!;
 const cards = {} as Record<PetId, { canvas: HTMLCanvasElement; name: HTMLElement; badge: HTMLElement }>;
 const home = el('section', { id: 'home' }, el('h1', {}, 'Critter Corner'));
 const cardGrid = el('div', { class: 'cards' });
-for (const id of Object.keys(PETS) as PetId[]) {
+for (const id of PET_IDS) {
   const canvas = el('canvas', { width: VIEW_W, height: VIEW_H, 'aria-hidden': 'true' });
   const name = el('span', {});
   const badge = el('span', { class: 'badge' });
@@ -150,7 +172,7 @@ function setBadge(node: HTMLElement, h: Habitat): void {
 }
 
 function refreshUi(): void {
-  for (const id of Object.keys(PETS) as PetId[]) {
+  for (const id of PET_IDS) {
     cards[id].name.textContent = habitats[id].name || PETS[id].title;
     setBadge(cards[id].badge, habitats[id]);
   }
@@ -265,10 +287,10 @@ function settingsDialog(): void {
   paint();
 
   const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, el('p', {}, 'Grown-ups: press and hold to start a pet over.')];
-  for (const id of Object.keys(PETS) as PetId[])
+  for (const id of PET_IDS)
     parts.push(
       holdButton(`Hold to reset the ${PETS[id].kind}`, 2000, () => {
-        habitats[id] = id === 'axolotl' ? new AxolotlHabitat(null, newSeed()) : new AntHabitat(null, newSeed());
+        habitats[id] = PETS[id].create(null, newSeed());
         persist();
         refreshUi();
         toasts.show(`The ${PETS[id].kind} has been reset.`);
@@ -293,13 +315,14 @@ let previewClock = 0;
 
 function step(dt: number): void {
   const env = envAt(clock.hour());
-  for (const id of Object.keys(habitats) as PetId[]) {
+  for (const id of PET_IDS) {
     const h = habitats[id];
+    // A pet's clock only starts once it has been adopted (named).
+    if (!h.name) continue;
     h.update(dt, dt * speed, env);
     for (const ev of h.drainEvents()) {
-      if (ev.type === 'toast') {
-        if (h.name) toasts.show(ev.text);
-      } else if (id === active) sound.play(ev.name);
+      if (ev.type === 'toast') toasts.show(ev.text);
+      else if (id === active) sound.play(ev.name);
     }
   }
   uiClock += dt;
@@ -324,7 +347,7 @@ function render(time: number): void {
   // Home screen: live previews at a gentle frame rate.
   if (time - previewClock < 0.1 && previewClock <= time) return;
   previewClock = time;
-  for (const id of Object.keys(PETS) as PetId[]) {
+  for (const id of PET_IDS) {
     habitats[id].render(surface, time, env);
     present(cards[id].canvas, surface);
   }

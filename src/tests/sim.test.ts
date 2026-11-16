@@ -38,12 +38,12 @@ describe('save', () => {
   test('round-trips through storage', () => {
     const st = memoryStorage();
     const data = freshSave(1000);
-    data.axolotl = new Axolotl(newAxoState(1, 'Mochi', 'golden')).serialize();
+    data.pets.axolotl = new Axolotl(newAxoState(1, 'Mochi', 'golden')).serialize();
     expect(writeSave(st, data)).toBe(true);
     const back = loadSave(st)!;
     expect(back.version).toBe(SAVE_VERSION);
     expect(back.lastSeen).toBe(1000);
-    expect((back.axolotl as { name: string }).name).toBe('Mochi');
+    expect((back.pets.axolotl as { name: string }).name).toBe('Mochi');
   });
 
   test('migrates a version 1 save', () => {
@@ -51,7 +51,16 @@ describe('save', () => {
     const out = migrate(v1)!;
     expect(out.version).toBe(SAVE_VERSION);
     expect(out.settings.sound).toBe(false);
-    expect((out.axolotl as { name: string }).name).toBe('Old');
+    expect((out.pets.axolotl as { name: string }).name).toBe('Old');
+    expect('ants' in out.pets).toBe(false);
+  });
+
+  test('migrates a version 2 save, keeping both pets', () => {
+    const v2 = { version: 2, lastSeen: 9, settings: { sound: true }, axolotl: { name: 'Mochi' }, ants: { name: 'Hill' } };
+    const out = migrate(v2)!;
+    expect(out.version).toBe(SAVE_VERSION);
+    expect(out.lastSeen).toBe(9);
+    expect(out.pets).toEqual({ axolotl: { name: 'Mochi' }, ants: { name: 'Hill' } });
   });
 
   test('ignores missing, corrupt and future saves', () => {

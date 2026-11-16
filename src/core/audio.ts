@@ -11,6 +11,7 @@ const SOUNDS: Record<SoundName, Note[]> = {
   tap: [[900, 0, 0.03, 'triangle']],
   splash: [[300, 0, 0.18, 'sine', 90], [640, 0.03, 0.1, 'sine', 240]],
   pop: [[880, 0, 0.05, 'sine', 1320]],
+  croak: [[150, 0, 0.09, 'sawtooth', 110], [170, 0.13, 0.12, 'sawtooth', 100]],
   hatch: [[660, 0, 0.08, 'sine'], [880, 0.09, 0.08, 'sine'], [1100, 0.18, 0.12, 'sine']],
 };
 

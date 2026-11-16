@@ -1,6 +1,6 @@
 /** Versioned save file in localStorage. No network, no accounts. */
 export const SAVE_KEY = 'critter-corner-save';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface Settings {
   sound: boolean;
@@ -10,8 +10,8 @@ export interface SaveData {
   version: number;
   lastSeen: number;
   settings: Settings;
-  axolotl: unknown | null;
-  ants: unknown | null;
+  /** Saved state per pet id. A pet is missing until it has been adopted. */
+  pets: Record<string, unknown>;
 }
 
 export interface StorageLike {
@@ -20,7 +20,7 @@ export interface StorageLike {
 }
 
 export function freshSave(now: number): SaveData {
-  return { version: SAVE_VERSION, lastSeen: now, settings: { sound: true }, axolotl: null, ants: null };
+  return { version: SAVE_VERSION, lastSeen: now, settings: { sound: true }, pets: {} };
 }
 
 type Raw = Record<string, unknown>;
@@ -31,6 +31,14 @@ const migrations: Record<number, (d: Raw) => Raw> = {
   1: (d) => {
     const { sound, ...rest } = d;
     return { ...rest, settings: { sound: sound !== false }, version: 2 };
+  },
+  // v2 had one top-level field per pet; v3 keeps them in a map so new pets need no migration.
+  2: (d) => {
+    const { axolotl, ants, ...rest } = d;
+    const pets: Raw = {};
+    if (axolotl) pets.axolotl = axolotl;
+    if (ants) pets.ants = ants;
+    return { ...rest, pets, version: 3 };
   },
 };
 
@@ -50,8 +58,7 @@ export function migrate(raw: Raw): SaveData | null {
     version: SAVE_VERSION,
     lastSeen: d.lastSeen,
     settings: { sound: settings.sound !== false },
-    axolotl: d.axolotl ?? null,
-    ants: d.ants ?? null,
+    pets: d.pets && typeof d.pets === 'object' ? { ...(d.pets as Raw) } : {},
   };
 }
 

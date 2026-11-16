@@ -1,7 +1,7 @@
 import type { Env } from '../core/time';
 import type { Surface } from '../render/surface';
 
-export type SoundName = 'plop' | 'munch' | 'chirp' | 'bubble' | 'no' | 'tap' | 'splash' | 'pop' | 'hatch';
+export type SoundName = 'plop' | 'munch' | 'chirp' | 'bubble' | 'no' | 'tap' | 'splash' | 'pop' | 'hatch' | 'croak';
 
 /** Things the shell should surface to the player. */
 export type UiEvent = { type: 'sound'; name: SoundName } | { type: 'toast'; text: string };
@@ -28,9 +28,11 @@ export interface Status {
   tone: 'good' | 'warn' | 'sleep';
 }
 
+export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond';
+
 /** One habitat: a pet's simulation plus how it draws and responds to touch. */
 export interface Habitat {
-  readonly id: 'axolotl' | 'ants';
+  readonly id: PetId;
   /** Empty until the player names the pet. */
   name: string;
   /** Currently selected mode tool id. */
