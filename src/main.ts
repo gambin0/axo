@@ -10,6 +10,7 @@ import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
 import { CrabHabitat } from './pets/crab/tank';
 import { PondHabitat } from './pets/pond/pond';
+import { TerrariumHabitat } from './pets/snail/terrarium';
 import type { Habitat, PetId } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
 import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
@@ -43,6 +44,10 @@ const PETS: Record<PetId, PetInfo> = {
   crab: {
     title: 'Hermit Crab', kind: 'hermit crab', defaultName: 'Pinchy', ask: 'What will you call your hermit crab?',
     create: (saved, seed) => new CrabHabitat(saved, seed),
+  },
+  snail: {
+    title: 'Snail Garden', kind: 'snail terrarium', defaultName: 'Mossy', ask: 'What will you call your snail garden?',
+    create: (saved, seed) => new TerrariumHabitat(saved, seed),
   },
 };
 const PET_IDS = Object.keys(PETS) as PetId[];

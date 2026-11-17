@@ -245,18 +245,6 @@ export class CrabHabitat implements Habitat {
     const sf = this.bg;
     for (let y = 0; y < VIEW_H; y++)
       for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(WALL, y / TANK.sand + Math.sin(x * 0.02) * 0.05, x, y));
-    // sand
-    for (let x = 0; x < VIEW_W; x++) {
-      const top = sandY(x);
-      for (let y = top; y < VIEW_H; y++) {
-        const n = hash2(x, y, 120);
-        let c = dither(SAND, (y - top) / 36 + n * 0.4, x, y);
-        if (y === top) c = mix(c, 0xfff3d0, 0.4);
-        if (n > 0.97) c = 0x7a6a50;
-        else if (n < 0.02) c = 0xfff3d0;
-        sf.px(x, y, c);
-      }
-    }
     // the branch: a gnarled limb leaning up and to the left
     const limb = (pts: readonly { x: number; y: number }[], r0: number, r1: number) => {
       for (let i = 1; i < pts.length; i++) {
@@ -273,9 +261,22 @@ export class CrabHabitat implements Habitat {
         }
       }
     };
-    limb(BRANCH, 4, 2);
-    limb([BRANCH[2], { x: 112, y: 70 }, { x: 118, y: 52 }], 2.2, 1);
-    limb([BRANCH[4], { x: 56, y: 88 }, { x: 44, y: 100 }], 1.8, 0.8);
+    // the root runs down below the surface, so the sand (drawn after) covers its foot
+    limb([{ x: 146, y: 152 }, ...BRANCH], 6, 1);
+    limb([BRANCH[2], { x: 112, y: 70 }, { x: 118, y: 52 }], 2.2, 0.4);
+    limb([BRANCH[4], { x: 56, y: 88 }, { x: 44, y: 100 }], 1.8, 0.4);
+    // sand
+    for (let x = 0; x < VIEW_W; x++) {
+      const top = sandY(x);
+      for (let y = top; y < VIEW_H; y++) {
+        const n = hash2(x, y, 120);
+        let c = dither(SAND, (y - top) / 36 + n * 0.4, x, y);
+        if (y === top) c = mix(c, 0xfff3d0, 0.4);
+        if (n > 0.97) c = 0x7a6a50;
+        else if (n < 0.02) c = 0xfff3d0;
+        sf.px(x, y, c);
+      }
+    }
     // coconut hide: half a husk with a doorway
     for (let y = TANK.sand - COCONUT.r - 4; y <= TANK.sand + 4; y++)
       for (let x = COCONUT.x - COCONUT.r - 2; x <= COCONUT.x + COCONUT.r + 2; x++) {

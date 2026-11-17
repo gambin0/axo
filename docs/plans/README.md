@@ -2,16 +2,16 @@
 
 Design plans for pets that are not built yet. Each one is written so it can be implemented on its own.
 
-Built so far: axolotl, ants, butterfly, pond, and the hermit crab (its plan is kept as a record of the design, with changes noted at the top).
+Built so far: axolotl, ants, butterfly, pond, the hermit crab and the snail terrarium (their plans are kept as a record of the design, with changes noted at the top).
 
 | Plan | Hook for the kids | Effort | Main risk |
 | --- | --- | --- | --- |
 | [Hermit crab beach tank](hermit-crab.md) (built) | Offer new shells as it grows | Medium | Making the shell swap readable at pixel scale |
 | [Hamster cage](hamster.md) | Cheek-stuffing, wheel, hoard | High | Fur and a round body in procedural art |
 | [Beehive](beehive.md) | Plant flowers, fill honeycomb | Medium | Feeling too much like the ant farm |
-| [Snail terrarium](snail.md) | Slime trails, slow and calm | Low | Not exciting enough on its own |
+| [Snail terrarium](snail.md) (built) | Slime trails, slow and calm | Low | Not exciting enough on its own |
 
-Suggested order for what is left: snail, beehive, hamster.
+Suggested order for what is left: beehive, hamster.
 
 ## How a pet plugs in
 

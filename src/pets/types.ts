@@ -28,7 +28,7 @@ export interface Status {
   tone: 'good' | 'warn' | 'sleep';
 }
 
-export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond' | 'crab';
+export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond' | 'crab' | 'snail';
 
 /** One habitat: a pet's simulation plus how it draws and responds to touch. */
 export interface Habitat {

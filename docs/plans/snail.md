@@ -2,6 +2,14 @@
 
 Pet id: `snail`. Read [the shared notes](README.md) first.
 
+> **Built** in `src/pets/snail/`. Differences from this plan:
+> - Surfaces are the soil and the front glass only (no bark, plant or lid climbing). A snail pulls in briefly while it turns onto the glass.
+> - Food is a mode tool: tap the soil to put down the next of lettuce, cucumber, carrot. Water is the Mist tool only (the dish is decoration).
+> - Salt is an action that is refused with a toast. Nothing is harmed.
+> - Not built: the morning "trail art" toast. Trails fade over two minutes and are not saved.
+> - One name for the whole terrarium; snails are told apart by shell colour and bands.
+> - Dry snails come home sealed after a long absence (floor 25 vs seal point 30), so a mist is the first thing to do.
+
 ## The idea
 
 A calm, slow terrarium with a couple of garden snails. They glide over everything, including the glass, leaving silvery trails that fade. It is the easiest pet to build and the gentlest to look after, suited to the youngest child. Because it is quiet, it needs two things to hold interest: the trails (which the child can read like drawings) and baby snails.
