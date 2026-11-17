@@ -15,7 +15,16 @@ const SOIL = [0xd0ab74, 0xbd935e, 0xa87e4d, 0x936a40, 0x7d5734];
 const SKY_DAY = [0xc9ecf8, 0xa9dcf2, 0x8fcdea];
 const SKY_NIGHT = [0x0d1530, 0x141f40, 0x1c2a4e];
 const GRASS = [0x8fd05a, 0x5fae42, 0x3f8a34, 0x2c6a2c];
-const TUNNEL = 0x3b2a1e;
+const TUNNEL_RAMP = [0x6e5038, 0x553c2a, 0x3e2c1e, 0x2a1e14];
+const SAND = [0xe2c48e, 0xd2b078, 0xc09c64, 0xaa8850];
+const LAYERS: readonly (readonly number[])[] = [
+  [0x7a5638, 0x664630, 0x523826, 0x402c1e], // topsoil
+  SAND,
+  [0xcc8a60, 0xb8764e, 0xa06240, 0x885034], // clay
+  [0xceaa7a, 0xba9666, 0xa68254, 0x906e46], // deep sand
+  [0xb09878, 0x988064, 0x806a52, 0x6a5642], // gravel
+];
+const SKY_DUSK = [0xf4b088, 0xc890a8, 0x8a84bc];
 
 const FOODS: { id: AntFoodKind; icon: string; label: string }[] = [
   { id: 'sugar', icon: '🍯', label: 'Honey' },
@@ -246,30 +255,89 @@ export class AntHabitat implements Habitat {
 
   private paintSoil(dug: (x: number, y: number) => boolean, wet: number): void {
     const soil = this.soil;
-    for (let y = FARM.surface; y < VIEW_H; y++)
+    const S = FARM.surface;
+    // the layers of an ant farm: dark topsoil, pale sand, a band of red clay, deeper sand, gravel at the bottom
+    const bounds = (x: number) => [
+      S + 11 + Math.sin(x * 0.021) * 3 + Math.sin(x * 0.09) * 1,
+      S + 50 + Math.sin(x * 0.015 + 1) * 5 + Math.sin(x * 0.05) * 2,
+      S + 64 + Math.sin(x * 0.018 + 2) * 4 + Math.sin(x * 0.07) * 1.5,
+      VIEW_H - 24 + Math.sin(x * 0.03) * 3,
+    ];
+    const layerAt = (x: number, y: number) => {
+      const b = bounds(x);
+      const i = b.findIndex((v) => y < v);
+      return { i: i < 0 ? 4 : i, top: i <= 0 ? S : b[(i < 0 ? 4 : i) - 1], bottom: i < 0 ? VIEW_H : b[i] };
+    };
+    const solid = (x: number, y: number) => y >= S && !dug(x, y);
+    for (let y = S; y < VIEW_H; y++)
       for (let x = 0; x < VIEW_W; x++) {
         const n = hash2(x, y, 50);
         if (dug(x, y)) {
-          let c = mix(TUNNEL, 0x2f2118, hash2(x >> 1, y >> 1, 51) * 0.6);
-          if (!dug(x, y - 2)) c = 0x241810; // roof shadow
-          else if (!dug(x, y + 2)) c = 0x6b5038; // lit floor
-          else if (!dug(x - 2, y)) c = mix(c, 0x241810, 0.5);
+          // a tunnel: dark under the roof, lighter toward a floor scattered with loose grains
+          let up = 0, down = 0;
+          while (up < 12 && dug(x, y - up - 1)) up++;
+          while (down < 12 && dug(x, y + down + 1)) down++;
+          let c = dither(TUNNEL_RAMP, clamp((down / (up + down + 1)) * 1.15, 0, 1), x, y);
+          if (down === 0 && n > 0.35) c = n > 0.75 ? SAND[2] : SAND[3];
+          else if (up === 0) c = TUNNEL_RAMP[3];
           soil.px(x, y, c);
           continue;
         }
-        const depth = (y - FARM.surface) / (VIEW_H - FARM.surface);
-        // wavy strata with speckle
-        const band = depth * 0.8 + Math.sin(x * 0.03 + y * 0.09) * 0.05 + Math.sin(x * 0.011 - y * 0.05) * 0.06 + (n - 0.5) * 0.14;
-        let c = dither(SOIL, clamp(band + 0.08, 0, 1), x, y);
-        if (n > 0.975) c = 0xe6cc9c;
-        else if (n < 0.03) c = 0x6a492b;
-        else if (hash2(x >> 1, y >> 1, 52) > 0.985) c = 0x9c9a92; // tiny stones
-        if (y < FARM.surface + 5) c = mix(c, 0x4e3620, 0.75 - (y - FARM.surface) * 0.12); // dark topsoil
-        // a darker rim where soil meets a tunnel
-        if (dug(x, y + 2) || dug(x, y - 2) || dug(x + 2, y) || dug(x - 2, y)) c = mix(c, 0x4a321e, 0.35);
-        soil.px(x, y, mix(c, 0x3f2a18, wet * 0.42 * (1 - depth * 0.45)));
+        const L = layerAt(x, y);
+        const ramp = LAYERS[L.i];
+        const local = (y - L.top) / Math.max(1, L.bottom - L.top);
+        // fine horizontal streaks inside each layer, and a crisp line where layers meet
+        const streak = hash2(x >> 3, y, 55) > 0.8 ? 0.15 : 0;
+        let c = dither(ramp, clamp(0.15 + local * 0.45 + (n - 0.5) * 0.3 + streak, 0, 1), x, y);
+        if (y - L.top < 1 && L.i > 0) c = mix(c, 0xfff0d0, 0.25);
+        if (n > 0.985) c = mix(c, 0xffffff, 0.35);
+        else if (n < 0.015) c = mix(c, 0x000000, 0.35);
+        soil.px(x, y, c);
       }
-
+    // stones and pebbles bedded in the soil, and roots reaching down from the grass
+    const stone = (cx: number, cy: number, r: number, seed: number) => {
+      const grey = [0xc4c0b6, 0xa09c92, 0x7c786e, 0x5a564e];
+      for (let y = Math.floor(cy - r); y <= cy + r; y++)
+        for (let x = Math.floor(cx - r * 1.3); x <= cx + r * 1.3; x++) {
+          const d = ((x - cx) / (r * 1.3)) ** 2 + ((y - cy) / r) ** 2;
+          if (d > 1 || !solid(x, y)) continue;
+          const t = 0.3 + (y - cy) / r * 0.3 + (x - cx) / r * 0.1 + d * 0.2 + hash2(x, y, seed) * 0.15;
+          soil.px(x, y, dither(grey, clamp(t, 0, 1), x, y));
+        }
+    };
+    for (let i = 0; i < 12; i++) stone(10 + hash2(i, 1, 56) * 300, S + 20 + hash2(i, 2, 56) * 100, 1.6 + hash2(i, 3, 56) * 2.6, 57);
+    for (let i = 0; i < 70; i++) {
+      const x = hash2(i, 1, 58) * VIEW_W;
+      stone(x, bounds(x)[3] + 3 + hash2(i, 2, 58) * 20, 1 + hash2(i, 3, 58) * 1.6, 59);
+    }
+    for (let i = 0; i < 11; i++) {
+      let x = 12 + hash2(i, 1, 62) * 296, y = S;
+      if (Math.abs(x - FARM.entranceX) < 10) continue;
+      const len = 10 + hash2(i, 2, 62) * 22;
+      for (let k = 0; k < len; k++) {
+        x += (hash2(i, k, 63) - 0.5) * 1.6;
+        y += 0.8;
+        if (solid(Math.round(x), Math.round(y))) soil.px(Math.round(x), Math.round(y), k < len * 0.6 ? 0xd8bc8c : 0xc4a476);
+        // little side rootlets
+        if (k > 4 && hash2(i, k, 64) > 0.85)
+          for (let j = 1; j < 4; j++) if (solid(Math.round(x + j), Math.round(y + j * 0.6))) soil.px(Math.round(x + j), Math.round(y + j * 0.6), 0xc4a476);
+      }
+    }
+    // tunnel walls: packed darker right at the edge, crumbling into the soil
+    for (let y = S; y < VIEW_H; y++)
+      for (let x = 0; x < VIEW_W; x++) {
+        if (dug(x, y)) continue;
+        const near1 = dug(x + 1, y) || dug(x - 1, y) || dug(x, y + 1) || dug(x, y - 1);
+        const near2 = !near1 && (dug(x + 2, y) || dug(x - 2, y) || dug(x, y + 2) || dug(x, y - 2));
+        if (near1) soil.blend(x, y, 0x2a1c12, 0.45);
+        else if (near2 && hash2(x, y, 65) > 0.4) soil.blend(x, y, 0x2a1c12, 0.2);
+      }
+    // damp soil darkens, most near the top
+    if (wet > 0.02)
+      for (let y = S; y < VIEW_H; y++) {
+        const a = wet * 0.42 * (1 - ((y - S) / (VIEW_H - S)) * 0.45);
+        for (let x = 0; x < VIEW_W; x++) if (!dug(x, y)) soil.blend(x, y, 0x3f2a18, a);
+      }
   }
 
   private dugWork(): number {
@@ -287,10 +355,11 @@ export class AntHabitat implements Habitat {
     const dug = (x: number, y: number) => y >= FARM.surface && g[(y >> 1) * GW + (x >> 1)] === 1;
     const wet = s.moisture / 100;
     const night = env.night;
+    const dusk = !night && (env.hour >= 18 || env.hour < 7.5);
 
     // sky
     for (let y = 0; y < FARM.surface; y++)
-      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(night ? SKY_NIGHT : SKY_DAY, y / FARM.surface, x, y));
+      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(night ? SKY_NIGHT : dusk ? SKY_DUSK : SKY_DAY, dusk ? 1 - y / FARM.surface : y / FARM.surface, x, y));
     if (night) {
       for (let i = 0; i < 26; i++) {
         const x = (hash2(i, 1, 40) * VIEW_W) | 0, y = (hash2(i, 2, 40) * 20) | 0;
@@ -408,23 +477,33 @@ export class AntHabitat implements Habitat {
 
     if (s.redLight) sf.multiply(1, 0.42, 0.38);
     else if (night) sf.multiply(0.34, 0.38, 0.58);
+    this.drawFrame(sf);
+  }
 
-    // frame and glass
-    const WOODS = [0x8a6540, 0x6f4f31, 0x573c25, 0x3e2a19];
+  /** Glass sheen, then a bevelled wooden frame with a screw in each corner. */
+  private drawFrame(sf: Surface): void {
+    for (let y = 4; y < VIEW_H - 4; y++) {
+      const x0 = 30 + (VIEW_H - y) * 0.45;
+      for (let k = 0; k < 9; k++) sf.add(Math.round(x0 + k), y, 0xffffff, 0.035);
+      for (let k = 0; k < 3; k++) sf.add(Math.round(x0 + 13 + k), y, 0xffffff, 0.05);
+    }
+    const WOODS = [0xa07850, 0x8a6540, 0x6f4f31, 0x573c25, 0x3e2a19];
     for (let i = 0; i < 4; i++) {
+      // light on the outer top-left, shadowed on the inner lip
+      const lit = i === 0 ? 0 : i === 3 ? 4 : 1 + ((i + 1) % 2);
       for (let x = i; x < VIEW_W - i; x++) {
-        sf.px(x, i, WOODS[i]);
-        sf.px(x, VIEW_H - 1 - i, WOODS[3 - i]);
+        sf.px(x, i, WOODS[lit]);
+        sf.px(x, VIEW_H - 1 - i, WOODS[Math.min(4, lit + 1)]);
       }
       for (let y = i; y < VIEW_H - i; y++) {
-        sf.px(i, y, WOODS[i]);
-        sf.px(VIEW_W - 1 - i, y, WOODS[3 - i]);
+        sf.px(i, y, WOODS[lit]);
+        sf.px(VIEW_W - 1 - i, y, WOODS[Math.min(4, lit + 1)]);
       }
     }
-    for (let i = 0; i < 80; i++) {
-      sf.add(34 + i, 12 + i * 1.5, 0xffffff, 0.05);
-      sf.add(35 + i, 12 + i * 1.5, 0xffffff, 0.05);
-      sf.add(46 + i, 12 + i * 1.5, 0xffffff, 0.03);
+    for (const [x, y] of [[1, 1], [VIEW_W - 3, 1], [1, VIEW_H - 3], [VIEW_W - 3, VIEW_H - 3]]) {
+      sf.px(x, y, 0xd8d0c0);
+      sf.px(x + 1, y, 0x8a8478);
+      sf.px(x, y + 1, 0x8a8478);
     }
   }
 

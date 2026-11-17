@@ -89,6 +89,9 @@ test('pond renders every stage', () => {
   shoot('pond-all', sf);
   h.render(sf, 2, envAt(23));
   shoot('pond-night', sf);
+  s.torch = true;
+  h.render(sf, 2, envAt(23));
+  shoot('pond-torch', sf);
 });
 
 test('butterfly close-up sheet', () => {

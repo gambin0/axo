@@ -73,3 +73,4 @@ describe('dragging things in from the toolbar', () => {
     expect(h.dropHint('plant', 40, 100).ok).toBe(false);
   });
 });
+

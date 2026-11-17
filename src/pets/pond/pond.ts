@@ -9,8 +9,8 @@ import { aquatic, bankY, DEV, hops, PERCHES, POND, Pond, PONDCFG, newPondState, 
 const WATER = [0x7cc0a2, 0x5aa48c, 0x408873, 0x2e6c5c, 0x215347];
 const MUD = [0x8a7450, 0x6e5a3c, 0x55452e, 0x3f3322];
 const STONE = [0xb4b3a6, 0x90907f, 0x6c6c5e, 0x4d4d43, 0x35352f];
-const SKY_DAY = [0xcdeefa, 0xb2e2f5, 0x9ad6ee];
-const SKY_NIGHT = [0x0d1530, 0x141f40, 0x1c2a4e];
+type Sky = 'day' | 'dusk' | 'night';
+const skyAt = (hour: number): Sky => (hour >= 20 || hour < 6 ? 'night' : hour >= 18 || hour < 7.5 ? 'dusk' : 'day');
 const REED = [0x9ac45a, 0x6f9c44, 0x4f7a36, 0x375a2a];
 const PAD = [0x8fd05a, 0x5fae42, 0x3f8a34];
 
@@ -21,6 +21,7 @@ export class PondHabitat implements Habitat {
   private particles = new Particles();
   private bg = new Surface(VIEW_W, VIEW_H);
   private bgReady = false;
+  private sky: Sky = 'day';
   private events: UiEvent[] = [];
   private said = new Set<string>();
 
@@ -242,70 +243,137 @@ export class PondHabitat implements Habitat {
 
   // ---- drawing -----------------------------------------------------------
 
-  /** Water, mud, and the stony bank: everything that never moves. */
-  private buildBackground(): void {
+  /** Sky, the far shore, water, mud and the stony bank: everything that never moves. */
+  private buildBackground(sky: Sky): void {
     const sf = this.bg;
-    for (let y = POND.surface; y < VIEW_H; y++)
+    const S = POND.surface;
+    // sky by the real clock
+    const [top, bot] = sky === 'day' ? [0x8ccbee, 0xdaf2fa] : sky === 'dusk' ? [0x6a74b4, 0xf8b884] : [0x0d1530, 0x22305a];
+    for (let y = 0; y < S; y++) for (let x = 0; x < VIEW_W; x++) sf.px(x, y, mix(top, bot, y / S));
+    if (sky === 'day') {
+      for (const [cx, cy, rx, ry] of [[70, 12, 14, 4], [80, 9, 8, 4], [210, 18, 11, 3], [217, 15, 6, 3]] as const)
+        sf.disc(cx, cy, rx, ry, 0xffffff, 0.85);
+    } else if (sky === 'dusk') sf.disc(150, 34, 8, 8, 0xffd890);
+    else {
+      for (let i = 0; i < 30; i++) sf.px((hash2(i, 1, 104) * VIEW_W) | 0, (hash2(i, 2, 104) * 26) | 0, 0xfff8d8);
+      sf.disc(60, 12, 5, 5, 0xf3f0d8);
+    }
+    // the far shore: a line of trees fading into the distance, then nearer bushes
+    const far = sky === 'night' ? 0x1c2a40 : mix(0x6a9a78, top, 0.35), near = sky === 'night' ? 0x1a3024 : 0x4f8a48;
+    for (let i = 0; i < 22; i++) {
+      const cx = i * 15 + hash2(i, 1, 111) * 10, r = 8 + hash2(i, 2, 111) * 7;
+      sf.disc(cx, S - 12 - r * 0.4, r, r * 0.9, far);
+    }
+    for (let x = 0; x < VIEW_W; x++) {
+      const h = 7 + Math.sin(x * 0.05) * 2.5 + Math.sin(x * 0.17 + 2) * 1.5 + hash2(x >> 1, 0, 105) * 1.5;
+      for (let y = Math.round(S - h); y < S; y++) {
+        const t = (y - (S - h)) / h;
+        let c = mix(near, 0x000000, t * 0.35);
+        if (y === Math.round(S - h)) c = mix(near, 0xffffff, 0.2);
+        else if (hash2(x, y, 106) > 0.8) c = mix(c, 0x000000, 0.15);
+        sf.px(x, y, c);
+      }
+    }
+    // water: lighter near the top, with a hazy slope of the far pond bed
+    for (let y = S; y < VIEW_H; y++)
       for (let x = 0; x < VIEW_W; x++) {
-        const depth = (y - POND.surface) / (VIEW_H - POND.surface);
+        const depth = (y - S) / (VIEW_H - S);
         sf.px(x, y, dither(WATER, clamp(depth * 0.9 + (Math.abs(x - 150) / 160) ** 2 * 0.2, 0, 1), x, y));
       }
-    // mud floor
+    for (let x = 0; x < 232; x++) {
+      const h = POND.bottom - 22 - Math.sin(x * 0.03 + 1) * 8 - Math.sin(x * 0.09) * 3;
+      for (let y = Math.round(h); y < POND.bottom + 2; y++) sf.blend(x, y, 0x1e4a40, 0.3);
+    }
+    // mud floor with pebbles
     for (let x = 0; x < VIEW_W; x++) {
       const top = POND.bottom + Math.round(Math.sin(x * 0.05) * 2 + Math.sin(x * 0.17) * 1);
       for (let y = top; y < VIEW_H; y++) {
         const n = hash2(x, y, 100);
         let c = dither(MUD, (y - top) / 26 + n * 0.45, x, y);
         if (y === top) c = mix(c, 0xb09a70, 0.5);
-        if (hash2(x >> 1, y >> 1, 101) > 0.95) c = dither(STONE, n, x, y);
         sf.px(x, y, c);
       }
     }
-    // the bank: rounded stones stacked up out of the water
-    for (let x = 226; x < VIEW_W; x++) {
+    for (let i = 0; i < 26; i++) {
+      const px = hash2(i, 1, 112) * 228, py = POND.bottom + 2 + hash2(i, 2, 112) * 18, r = 1 + hash2(i, 3, 112) * 1.8;
+      sf.disc(px, py, r * 1.3, r, dither(STONE, 0.3 + hash2(i, 4, 112) * 0.5, px | 0, py | 0));
+      sf.px(Math.round(px - r * 0.4), Math.round(py - r * 0.5), STONE[0]);
+    }
+    // a sunken branch half in the mud, gone green with slime
+    for (let x = 120; x <= 196; x++) {
+      const f = (x - 120) / 76, cy = POND.bottom - 1 - f * 5 + Math.sin(f * 7) * 0.8, r = 3 - f * 1.4;
+      for (let d = -Math.ceil(r); d <= r; d++) {
+        const y = Math.round(cy + d);
+        let c = dither([0x6a5a40, 0x54462f, 0x3e3322, 0x2c241a], clamp((d + r) / (2 * r) + (hash2(x >> 2, d, 113) > 0.7 ? 0.2 : 0), 0, 1), x, y);
+        if (d <= -r + 1 && hash2(x, 0, 114) > 0.4) c = mix(c, 0x4f8a48, 0.55);
+        sf.px(x, y, c);
+      }
+    }
+    // the bank: rounded stones stacked up out of the water, mossy on top and slimy below the waterline
+    const CW = 13, CH = 9;
+    for (let x = 222; x < VIEW_W; x++) {
       const top = Math.round(bankY(x) + Math.sin(x * 0.35) * 1.5);
       for (let y = top; y < VIEW_H; y++) {
-        const cx = Math.floor(x / 9), cy = Math.floor((y + (cx & 1) * 4) / 7);
-        const inX = x % 9, inY = (y + (cx & 1) * 4) % 7;
-        let t = hash2(cx, cy, 102) * 0.5 + (inY / 7) * 0.35 + (y - top) / 200;
-        if (inX === 0 || inY === 0) t += 0.3;
-        if (inY === 1 && inX > 1) t -= 0.2;
+        const gx = Math.floor(x / CW), gy = Math.floor(y / CH);
+        let d1 = 1e9, d2 = 1e9, bx = 0, by = 0, bid = 0;
+        for (let oy = -1; oy <= 1; oy++)
+          for (let ox = -1; ox <= 1; ox++) {
+            const cx = gx + ox, cy = gy + oy;
+            const px = cx * CW + 2 + hash2(cx, cy, 115) * (CW - 4), py = cy * CH + 2 + hash2(cx, cy, 116) * (CH - 4);
+            const d = Math.hypot((x - px) * 0.75, y - py);
+            if (d < d1) {
+              d2 = d1;
+              d1 = d;
+              bx = px;
+              by = py;
+              bid = cx * 31 + cy;
+            } else if (d < d2) d2 = d;
+          }
+        let t = 0.15 + hash2(bid, 0, 117) * 0.3 + (y - by) * 0.05 + (x - bx) * 0.015 + d1 * 0.03;
+        if (y - by < -1.5 && x - bx < 1 && d1 < 4) t -= 0.2;
+        if (d2 - d1 < 1.5) t = 0.85 + (d2 - d1 < 0.7 ? 0.15 : 0);
         let c = dither(STONE, clamp(t, 0, 1), x, y);
-        if (y === top) c = mix(c, 0xe6e4d2, 0.4);
-        // green slime below the waterline
-        if (y > POND.surface + 2 && hash2(x, y, 103) > 0.6) c = mix(c, 0x4f8a48, 0.35);
+        const wet = y > S + 1;
+        if (wet) {
+          c = mix(c, 0x2e5a3a, 0.35);
+          if (hash2(x, y, 103) > 0.7) c = mix(c, 0x4f8a48, 0.35);
+        } else if (y - top < 2 + hash2(x, 0, 118) * 2) c = mix(c, 0x7ab85a, 0.6); // moss along the top
         sf.px(x, y, c);
+      }
+    }
+    // grass and a fern on top of the bank
+    for (let x = 262; x < VIEW_W - 2; x += 2) {
+      const top = Math.round(bankY(x) + Math.sin(x * 0.35) * 1.5);
+      const h = 2 + Math.floor(hash2(x, 1, 119) * 4);
+      for (let k = 1; k <= h; k++) sf.px(x + (k > 2 && x % 4 ? 1 : 0), top - k, k === h ? REED[0] : REED[1]);
+    }
+    for (let f = 0; f < 5; f++) {
+      const a = -Math.PI / 2 + (f - 2) * 0.45, by = Math.round(bankY(300)) - 1;
+      for (let k = 0; k < 14; k++) {
+        const x = Math.round(300 + Math.cos(a) * k + (f - 2) * k * k * 0.02), y = Math.round(by + Math.sin(a) * k + k * k * 0.03);
+        sf.px(x, y, REED[2]);
+        if (k % 2 === 0 && k > 2) {
+          sf.px(x - 1, y, REED[1]);
+          sf.px(x + 1, y, REED[0]);
+        }
       }
     }
   }
 
   render(sf: Surface, time: number, env: Env): void {
     const m = this.model, s = m.s;
-    if (!this.bgReady) {
+    const sky = skyAt(env.hour);
+    if (!this.bgReady || sky !== this.sky) {
       this.bgReady = true;
-      this.buildBackground();
+      this.sky = sky;
+      this.buildBackground(sky);
     }
     const dark = m.dark(env);
     const night = env.night;
     sf.copyFrom(this.bg);
 
-    // sky and the far bank
-    for (let y = 0; y < POND.surface; y++)
-      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(night ? SKY_NIGHT : SKY_DAY, y / POND.surface, x, y));
-    if (night) {
-      for (let i = 0; i < 22; i++) sf.blend((hash2(i, 1, 104) * VIEW_W) | 0, (hash2(i, 2, 104) * 24) | 0, 0xffffff, 0.4 + 0.5 * Math.abs(Math.sin(time * 0.7 + i)));
-      sf.disc(60, 12, 5, 5, 0xf3f0d8);
-    }
-    for (let x = 0; x < VIEW_W; x++) {
-      const h = 9 + Math.sin(x * 0.04) * 3 + Math.sin(x * 0.13 + 2) * 2 + hash2(x, 0, 105) * 3;
-      for (let y = Math.round(POND.surface - h); y < POND.surface; y++) sf.px(x, y, dither(REED, 0.55 + (POND.surface - y) / 40 + hash2(x, y, 106) * 0.2, x, y));
-    }
-    // the bank stones above the waterline were covered by the sky: redraw them
-    for (let x = 226; x < VIEW_W; x++)
-      for (let y = Math.round(bankY(x) - 2); y < POND.surface; y++) {
-        const i = (y * VIEW_W + x) * 4;
-        if (y >= Math.round(bankY(x) + Math.sin(x * 0.35) * 1.5)) sf.data.set(this.bg.data.subarray(i, i + 4), i);
-      }
+    // stars twinkle
+    if (night) for (let i = 0; i < 12; i++) sf.blend((hash2(i, 5, 104) * VIEW_W) | 0, (hash2(i, 6, 104) * 24) | 0, 0xffffff, 0.5 * Math.abs(Math.sin(time * 0.7 + i)));
 
     // reeds and cattails
     for (let i = 0; i < 9; i++) {
@@ -344,18 +412,27 @@ export class PondHabitat implements Habitat {
       sf.blend(x, POND.bottom - 1 + ((hash2(i, 1, 109) * 5) | 0), 0x7fd05a, 0.6);
     }
 
-    // lily pads with their stalks, and one flower
+    // lily pads floating flat, seen from just above, with their stalks, and a water lily on one
     PERCHES.slice(0, 3).forEach((p, i) => {
-      for (let y = POND.surface + 2; y < POND.bottom; y += 1) sf.blend(Math.round(p.x + Math.sin(y * 0.08 + i + time * 0.4) * 3), y, 0x3f7a44, 0.5);
-      for (let dx = -13; dx <= 13; dx++) {
-        if (dx > 2 && dx < 5) continue; // the notch
-        const edge = Math.abs(dx) > 11;
-        sf.px(p.x + dx, POND.surface, edge ? PAD[2] : PAD[dx < 0 ? 0 : 1]);
-        if (!edge) sf.px(p.x + dx, POND.surface + 1, PAD[2]);
-      }
+      for (let y = POND.surface + 3; y < POND.bottom; y += 1) sf.blend(Math.round(p.x + Math.sin(y * 0.08 + i + time * 0.4) * 3), y, 0x3f7a44, 0.5);
+      const bob = Math.sin(time * 0.9 + i * 2) * 0.4;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -14; dx <= 14; dx++) {
+          if ((dx / 14) ** 2 + ((dy + 0.2) / 1.9) ** 2 > 1) continue;
+          if (dy <= 0 && dx > 1 && dx < 3 + (dy + 1) * 2) continue; // the notch
+          let c = dy < 0 ? PAD[0] : dy === 0 ? PAD[1] : PAD[2];
+          if (dy <= 0 && (dx === -6 || dx === 7) ) c = mix(c, 0xd8f0a0, 0.4); // veins
+          if (Math.abs(dx) > 12 && dy === 0) c = PAD[2];
+          sf.px(p.x + dx, Math.round(POND.surface + dy + bob), c);
+        }
       if (i === 1) {
-        for (const [dx, dy, c] of [[-9, -1, 0xf7b4d0], [-8, -2, 0xffffff], [-7, -1, 0xf7b4d0], [-8, -1, 0xf7e36a], [-10, -2, 0xf48ab8], [-6, -2, 0xf48ab8], [-8, -3, 0xf7b4d0]] as const)
-          sf.px(p.x + dx, POND.surface + dy, c);
+        // a water lily: white petals around a yellow middle
+        const fx = p.x - 8, fy = Math.round(POND.surface - 2 + bob);
+        for (const [dx, dy, c] of [
+          [-3, 0, 0xf4e8f0], [3, 0, 0xf4e8f0], [-2, -1, 0xffffff], [2, -1, 0xffffff], [-1, -2, 0xfff4fa], [1, -2, 0xfff4fa], [0, -3, 0xffffff],
+          [-2, 0, 0xf8d0e0], [2, 0, 0xf8d0e0], [-1, 0, 0xf7e36a], [0, 0, 0xf7c84a], [1, 0, 0xf7e36a], [0, -1, 0xf7e36a], [-1, -1, 0xffffff], [1, -1, 0xffffff],
+        ] as const)
+          sf.px(fx + dx, fy + dy, c);
       }
     });
 
@@ -436,12 +513,20 @@ export class PondHabitat implements Habitat {
     }
 
     if (dark) sf.multiply(0.32, 0.38, 0.6);
-    else if (night) sf.multiply(0.8, 0.82, 0.7); // torchlight
-
-    for (let i = 0; i < 70; i++) {
-      sf.add(40 + i, 56 + i * 1.5, 0xffffff, 0.05);
-      sf.add(41 + i, 56 + i * 1.5, 0xffffff, 0.05);
+    else if (night) {
+      // torchlight: dark all round, with a beam shining down into the water
+      sf.multiply(0.42, 0.48, 0.66);
+      const ox = 18, oy = 2, dir = Math.atan2(120, 120) + Math.sin(time * 0.3) * 0.06;
+      for (let y = 0; y < VIEW_H; y++)
+        for (let x = 0; x < VIEW_W; x++) {
+          const dx = x - ox, dy = y - oy, d = Math.hypot(dx, dy);
+          const off = Math.abs(Math.atan2(dy, dx) - dir);
+          if (off > 0.34 || d > 240) continue;
+          const a = (1 - off / 0.34) ** 1.4 * (1 - d / 240) * 0.55;
+          sf.add(x, y, 0xfff0c0, a);
+        }
     }
+
     for (let x = 0; x < VIEW_W; x++) {
       sf.px(x, 0, 0x0b1216);
       sf.px(x, 1, 0x0b1216);

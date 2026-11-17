@@ -1,5 +1,6 @@
 import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { drawGlassTank } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
@@ -284,28 +285,54 @@ export class AxolotlHabitat implements Habitat {
       const h = 22 + Math.sin(x * 0.035 + 2) * 12 + Math.sin(x * 0.11) * 5 + hash2(x >> 2, 0, 4) * 4;
       for (let y = Math.round(TANK.gravel - h); y < TANK.gravel + 4; y++) sf.blend(x, y, 0x164458, 0.42);
     }
+    // a planted back wall, lost in the blue
+    for (let c = 0; c < 7; c++) {
+      // clumps, not a hedge: a few blades of different heights, leaning apart
+      const cx = 20 + c * 46 + hash2(c, 0, 50) * 24;
+      for (let i = 0; i < 4; i++) {
+        const len = 30 + hash2(c, i, 51) * 90;
+        blade(sf, cx + (i - 1.5) * 3, TANK.gravel + 2, len, (i - 1.5) * 0.5 + (hash2(c, i, 52) - 0.5) * 0.6, 2 + (hash2(c, i, 53) > 0.6 ? 1 : 0), LEAF_BACK, 0, c * 2 + i, 0.72 + hash2(c, i, 54) * 0.12);
+      }
+    }
 
     if (d.wood) {
-      // driftwood: a leaning log with a forked branch
-      const limb = (x0: number, y0: number, x1: number, y1: number, r0: number, r1: number) => {
-        const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
-        for (let i = 0; i <= n; i++) {
-          const f = i / n;
-          const cx = x0 + (x1 - x0) * f + Math.sin(f * 5) * 2, cy = y0 + (y1 - y0) * f;
-          const r = r0 + (r1 - r0) * f;
-          for (let j = -Math.ceil(r); j <= Math.ceil(r); j++) {
-            if (Math.abs(j) > r) continue;
-            const v = (j + r) / (2 * r);
-            const x = Math.round(cx), y = Math.round(cy + j);
-            const grain = hash2(i >> 2, j, 21) > 0.8 ? 0.2 : 0;
-            sf.px(x, y, dither(WOOD, clamp(v * 0.9 + grain, 0, 1), x, y));
-            sf.px(x + 1, y, dither(WOOD, clamp(v * 0.9 + grain, 0, 1), x + 1, y));
+      // driftwood: a gnarled log leaning on the gravel with a forked branch, bark grain running along it
+      const limb = (pts: readonly (readonly [number, number])[], r0: number, r1: number) => {
+        let arc = 0;
+        for (let k = 1; k < pts.length; k++) {
+          const [ax, ay] = pts[k - 1], [bx, by] = pts[k];
+          const n = Math.ceil(Math.hypot(bx - ax, by - ay));
+          for (let i = 0; i <= n; i++) {
+            const f = i / n, g = (k - 1 + f) / (pts.length - 1);
+            const cx = ax + (bx - ax) * f, cy = ay + (by - ay) * f;
+            const r = r0 + (r1 - r0) * g + Math.sin((arc + i) * 0.4) * 0.4;
+            for (let j = -Math.ceil(r); j <= Math.ceil(r); j++) {
+              if (Math.abs(j) > r) continue;
+              let v = (j + r) / (2 * r) * 0.85;
+              if (hash2(Math.round(((j + r) / (2 * r)) * 5), Math.floor((arc + i) / 6), 21) > 0.7) v += 0.22;
+              if (j < -r + 1) v -= 0.15;
+              const x = Math.round(cx), y = Math.round(cy + j);
+              sf.px(x, y, dither(WOOD, clamp(v, 0, 1), x, y));
+              sf.px(x + 1, y, dither(WOOD, clamp(v + 0.05, 0, 1), x + 1, y));
+            }
           }
+          arc += n;
         }
       };
-      limb(92, TANK.gravel + 2, 150, 118, 5, 2.5);
-      limb(124, 134, 142, 98, 2.5, 1);
-      limb(150, 118, 176, 110, 2.2, 0.8);
+      limb([[84, TANK.gravel + 4], [104, 140], [126, 128], [150, 118], [168, 113]], 6.5, 2);
+      limb([[122, 131], [130, 116], [136, 102], [134, 90]], 3, 0.8);
+      limb([[150, 118], [162, 106], [176, 104]], 2.4, 0.8);
+      // little broad-leaved plants tied onto the wood
+      for (const [lx, ly, a] of [[118, 126, -2.3], [121, 124, -1.4], [124, 127, -0.6], [146, 114, -1.9], [149, 113, -1.0]] as const) {
+        const len = 9, wid = 3;
+        for (let t = 0; t <= len; t += 0.5) {
+          const w = wid * Math.sin(Math.PI * Math.min(1, t / len)) ** 0.7;
+          for (let u = -w; u <= w; u += 0.5) {
+            const x = Math.round(lx + Math.cos(a) * t - Math.sin(a) * u), y = Math.round(ly + Math.sin(a) * t + Math.cos(a) * u);
+            sf.px(x, y, Math.abs(u) < 0.5 ? LEAF_BACK[0] : u < 0 ? LEAF_BACK[1] : LEAF_BACK[2]);
+          }
+        }
+      }
     }
 
     if (d.cave) {
@@ -314,21 +341,34 @@ export class AxolotlHabitat implements Habitat {
           if (caveShape(x, y) === 'hole') sf.px(x, y, dither([0x0c1d26, 0x112934], hash2(x, y, 2), x, y));
     }
 
-    // gravel bed of individual pebbles
+    // gravel bed: rounded pebbles of different sizes and colours, packed together
+    const CW = 8, CH = 5, G0 = TANK.gravel - 8;
+    const RAMPS = [PEBBLE, PEBBLE, PEBBLE, PEBBLE, STONE, STONE, [0xa88a68, 0x8a6c4e, 0x6c5038, 0x523c2a, 0x3a2a1e]];
     for (let x = 0; x < VIEW_W; x++) {
       const top = gravelTop(x);
       for (let y = top; y < VIEW_H; y++) {
-        const row = Math.floor((y - TANK.gravel + 8) / 3);
-        const px = x + (row & 1) * 2;
-        const cell = Math.floor(px / 4);
-        const tone = hash2(cell, row, 1);
-        const inX = px % 4, inY = (y - TANK.gravel + 8) % 3;
-        let t = tone * 0.6 + (y - top) / 60;
-        if (inY === 0 && inX < 3) t -= 0.18; // lit top of each pebble
-        if (inX === 3 || inY === 2) t += 0.25; // gap shadow
-        const grey = hash2(cell, row, 6) > 0.82;
-        const c = dither(grey ? STONE : PEBBLE, clamp(t, 0, 1), x, y);
-        sf.px(x, y, y === top ? mix(c, 0xfff6dd, 0.25) : c);
+        const gx = Math.floor(x / CW), gy = Math.floor((y - G0) / CH);
+        let d1 = 1e9, d2 = 1e9, best = [0, 0, 0, 0];
+        for (let oy = -1; oy <= 1; oy++)
+          for (let ox = -1; ox <= 1; ox++) {
+            const cx = gx + ox, cy = gy + oy;
+            const px = cx * CW + 1 + hash2(cx, cy, 40) * (CW - 2), py = G0 + cy * CH + 1 + hash2(cx, cy, 41) * (CH - 2);
+            const d = Math.hypot((x - px) * 0.8, y - py);
+            if (d < d1) {
+              d2 = d1;
+              d1 = d;
+              best = [cx, cy, px, py];
+            } else if (d < d2) d2 = d;
+          }
+        const [cx, cy, px, py] = best;
+        const ramp = RAMPS[Math.floor(hash2(cx, cy, 42) * RAMPS.length)];
+        // lit from above-left, a dark crack between pebbles, darker further down
+        // round shading: light on the upper left of each pebble, darker toward its rim
+        let t = 0.15 + hash2(cx, cy, 43) * 0.25 + (y - py) * 0.07 + (x - px) * 0.025 + (y - top) / 70 + d1 * 0.04;
+        if (y - py < -1 && x - px < 0 && d1 < 2.6) t -= 0.22;
+        if (d2 - d1 < 1.4) t = 0.75 + (d2 - d1 < 0.7 ? 0.2 : 0);
+        const c = dither(ramp, clamp(t, 0, 1), x, y);
+        sf.px(x, y, y === top ? mix(c, 0xfff6dd, 0.2) : c);
       }
     }
     // a few smooth stones resting on the gravel
@@ -343,10 +383,19 @@ export class AxolotlHabitat implements Habitat {
     }
     if (d.bubbler) {
       const y = gravelTop(TANK.bubblerX) - 3;
-      sf.rect(TANK.bubblerX - 4, y, 9, 4, 0x6d7780);
-      sf.rect(TANK.bubblerX - 4, y, 9, 1, 0xa9b4bd);
-      sf.rect(TANK.bubblerX - 4, y + 3, 9, 1, 0x424a52);
-      for (let i = -3; i <= 3; i += 2) sf.px(TANK.bubblerX + i, y + 1, 0x2f363c);
+      // the airline tube running down the back from the lid
+      for (let ty = 8; ty < y - 1; ty++) {
+        sf.blend(TANK.bubblerX + 5, ty, 0xdff4f2, 0.35);
+        sf.blend(TANK.bubblerX + 6, ty, 0x8ab4b8, 0.3);
+      }
+      for (let k = 0; k < 4; k++) sf.blend(TANK.bubblerX + 5 - k, y - 1, 0xdff4f2, 0.4);
+      // a round, porous air stone
+      for (let dy = -3; dy <= 2; dy++)
+        for (let dx = -5; dx <= 5; dx++) {
+          if ((dx / 5.5) ** 2 + (dy / 3.2) ** 2 > 1) continue;
+          const t = 0.3 + dy * 0.12 + dx * 0.04 + (hash2(dx, dy, 44) > 0.75 ? 0.3 : 0);
+          sf.px(TANK.bubblerX + dx, y + 1 + dy, dither([0xb8c4cc, 0x8a96a0, 0x5e6870, 0x3a4248], clamp(t, 0, 1), TANK.bubblerX + dx, dy));
+        }
     }
   }
 
@@ -451,6 +500,12 @@ export class AxolotlHabitat implements Habitat {
       blade(sf, 296 + (i - 2) * 4, gy(296) + 2, 15 + hash2(i, 4, 34) * 12, (i - 2) * 0.9, 6, LEAF, time, i, 0);
 
     this.particles.render(sf);
+    // tiny specks drifting in the water
+    for (let i = 0; i < 28; i++) {
+      const x = (((hash2(i, 1, 51) * VIEW_W + time * (hash2(i, 2, 51) - 0.5) * 3) % VIEW_W) + VIEW_W) % VIEW_W;
+      const y = TANK.surface + 6 + hash2(i, 3, 51) * (TANK.gravel - TANK.surface - 10) + Math.sin(time * 0.4 + i) * 3;
+      sf.blend(x, y, 0xe8fff8, 0.18 + 0.12 * Math.sin(time + i));
+    }
 
     // caustics rippling over the gravel
     if (!dark)
@@ -480,37 +535,28 @@ export class AxolotlHabitat implements Habitat {
       level = Math.round(TANK.surface + f * 95);
     }
     for (let y = 0; y < level; y++)
-      for (let x = 0; x < VIEW_W; x++) sf.blend(x, y, y < TANK.surface ? 0x1b2c36 : 0x27424e, y < TANK.surface ? 0.82 : 0.7);
+      for (let x = 0; x < VIEW_W; x++) sf.blend(x, y, y < TANK.surface ? 0x31505a : 0x27424e, y < TANK.surface ? 0.8 : 0.7);
     for (let x = 0; x < VIEW_W; x++) {
       const w = Math.sin(x * 0.18 + time * 2.2) + Math.sin(x * 0.07 - time * 1.4);
       sf.blend(x, level, 0xe6fbff, 0.75);
       sf.blend(x, level + 1, 0xbfeef2, w > 0.6 ? 0.7 : 0.3);
       if (w > 1.4) sf.blend(x, level + 2, 0xbfeef2, 0.35);
+      // the underside of the surface works like a rippling mirror
+      for (let k = 3; k < 8; k++) if (Math.sin(x * 0.11 + k * 1.7 - time * 1.8) + w * 0.4 > 1.1) sf.blend(x, level + k, 0xd8f6f6, 0.16 * (1 - k / 8));
     }
 
     if (dark) sf.multiply(0.3, 0.38, 0.62);
     else if (s.lamp) for (let y = 0; y < 46; y++) for (let x = 0; x < VIEW_W; x++) sf.add(x, y, 0xfff0c0, 0.16 * (1 - y / 46));
 
-    // glass: a diagonal glare and a dark frame
-    for (let i = 0; i < 70; i++) {
-      sf.add(40 + i - 0, 20 + i * 1.6, 0xffffff, 0.05);
-      sf.add(41 + i, 20 + i * 1.6, 0xffffff, 0.05);
-      sf.add(52 + i, 20 + i * 1.6, 0xffffff, 0.03);
+    drawGlassTank(sf, TANK.left, TANK.right, 8);
+    // an LED light bar along the lid
+    for (let x = 40; x < 280; x++) {
+      sf.px(x, 3, 0x5a5a64);
+      sf.px(x, 4, 0x44444e);
+      sf.px(x, 5, 0x2c2c34);
+      sf.px(x, 6, s.lamp ? (x % 4 ? 0xfff4d0 : 0xffe8a8) : x % 4 ? 0x6a6a74 : 0x54545e);
     }
-    for (let x = 0; x < VIEW_W; x++) {
-      sf.px(x, 0, 0x0b1216);
-      sf.px(x, 1, 0x0b1216);
-      sf.px(x, 2, 0x27343b);
-      sf.px(x, VIEW_H - 1, 0x0b1216);
-      sf.px(x, VIEW_H - 2, 0x0b1216);
-    }
-    for (let y = 0; y < VIEW_H; y++) {
-      sf.px(0, y, 0x0b1216);
-      sf.px(1, y, 0x0b1216);
-      sf.blend(2, y, 0xcfeef5, 0.25);
-      sf.px(VIEW_W - 1, y, 0x0b1216);
-      sf.px(VIEW_W - 2, y, 0x0b1216);
-      sf.blend(VIEW_W - 3, y, 0xcfeef5, 0.18);
-    }
+    sf.px(40, 3, 0x2c2c34);
+    sf.px(279, 3, 0x2c2c34);
   }
 }
