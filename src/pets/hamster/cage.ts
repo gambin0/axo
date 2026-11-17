@@ -1,5 +1,6 @@
 import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
@@ -14,7 +15,6 @@ const BEDDING = [0xf6eed8, 0xe8dab8, 0xd6c49e, 0xbca880];
 const TUNNEL = [0xa08060, 0x7a5c40, 0x54402a, 0x30221a];
 const WOOD = [0xd8a868, 0xb8844a, 0x8a5e32, 0x5e3e20];
 const HAY = [0xe0cc80, 0xc8ac5c, 0xa88c44];
-const FRAME = [0x1c1c22, 0x2c2c34, 0x44444e, 0x62626c];
 const CURTAIN = [0xf4b8a4, 0xe0988a, 0xc47a70];
 const WINDOW = { x0: 98, x1: 146, y0: 20, y1: 60 };
 const LAMP = { x: 30, y: 13 };
@@ -22,16 +22,6 @@ const SKIN = [0xf4c8a8, 0xe0a888, 0xc08468];
 
 type Sky = 'day' | 'dusk' | 'night';
 const skyAt = (hour: number): Sky => (hour >= 20 || hour < 6 ? 'night' : hour >= 18 || hour < 7.5 ? 'dusk' : 'day');
-
-/** A soft shadow on the bedding under something standing on it. */
-function groundShadow(sf: Surface, cx: number, w: number, a = 0.35): void {
-  for (let dx = -w; dx <= w; dx++) {
-    const f = a * (1 - (dx / (w + 1)) ** 2);
-    sf.blend(cx + dx, GROUND - 1, 0x5a4630, f * 0.6);
-    sf.blend(cx + dx, GROUND, 0x5a4630, f);
-    sf.blend(cx + dx, GROUND + 1, 0x5a4630, f * 0.45);
-  }
-}
 
 const UNLOCK_TEXT: Record<string, (n: string) => string> = {
   sniff: (n) => `${n} trusts you enough to come and sniff your finger. Hold a finger in the cage!`,
@@ -415,7 +405,7 @@ export class CageHabitat implements Habitat {
 
     // a little wooden house
     const hx = SPOT.house;
-    groundShadow(sf, hx + 2, 22);
+    groundShadow(sf, hx + 2, GROUND, 22);
     for (let y = GROUND - 22; y < GROUND; y++)
       for (let x = hx - 17; x <= hx + 17; x++) {
         const door = Math.abs(x - hx) < 6 && y > GROUND - 13 && (y > GROUND - 9 || (x - hx) ** 2 + (y - (GROUND - 9)) ** 2 < 36);
@@ -440,13 +430,13 @@ export class CageHabitat implements Habitat {
         sf.px(x, GROUND - 22 - k, edge ? 0x7a3224 : c);
       }
     // a wooden chew block
-    groundShadow(sf, SPOT.chew, 9);
+    groundShadow(sf, SPOT.chew, GROUND, 9);
     for (let y = GROUND - 11; y < GROUND; y++)
       for (let x = SPOT.chew - 6; x <= SPOT.chew + 6; x++) sf.px(x, y, dither(WOOD, y < GROUND - 9 ? 0.05 : x > SPOT.chew + 3 ? 0.6 : 0.3, x, y));
     sf.px(SPOT.chew + 6, GROUND - 7, 0xfff0d0);
     sf.px(SPOT.chew + 6, GROUND - 6, 0xf0d8a8);
     // the wheel stand: two legs down to a base
-    groundShadow(sf, WHEEL.x, 20, 0.3);
+    groundShadow(sf, WHEEL.x, GROUND, 20, 0.3);
     for (const side of [-1, 1])
       for (let y = WHEEL.y; y < GROUND - 1; y++) {
         const x = Math.round(WHEEL.x + (side * (y - WHEEL.y) * 15) / (GROUND - WHEEL.y));
@@ -638,50 +628,6 @@ export class CageHabitat implements Habitat {
     return (this.tubePx = out);
   }
 
-  private drawLamp(sf: Surface, on: boolean): void {
-    // a clip-on lamp sitting on the lid
-    for (let y = 3; y <= LAMP.y; y++)
-      for (let dx = -10; dx <= 10; dx++) {
-        if ((dx / 10.5) ** 2 + ((y - LAMP.y) / 10) ** 2 > 1) continue;
-        let c = dither([0x6aaa96, 0x4a8a78, 0x2e6a5a], 0.25 + (dx > 4 ? 0.5 : 0) + (dx < -5 ? -0.25 : 0), LAMP.x + dx, y);
-        if (y === LAMP.y) c = 0x1e4a3e;
-        sf.px(LAMP.x + dx, y, c);
-      }
-    sf.px(LAMP.x - 1, 2, 0x8a8a94);
-    sf.px(LAMP.x, 2, 0x8a8a94);
-    for (let dx = -4; dx <= 4; dx++) {
-      sf.px(LAMP.x + dx, LAMP.y + 1, on ? 0xfff6c8 : 0xc8c0b0);
-      if (Math.abs(dx) < 3) sf.px(LAMP.x + dx, LAMP.y + 2, on ? 0xffe8a0 : 0xa8a094);
-    }
-  }
-
-  /** The tank: a mesh lid and a dark frame, with faint reflections on the front glass. */
-  private drawTank(sf: Surface): void {
-    for (let y = CAGE.top; y < CAGE.bottom; y++) {
-      const x0 = 40 + (CAGE.bottom - y) * 0.45, x1 = 206 + (CAGE.bottom - y) * 0.45;
-      for (let k = 0; k < 9; k++) sf.add(Math.round(x0 + k), y, 0xffffff, 0.035);
-      for (let k = 0; k < 3; k++) sf.add(Math.round(x0 + 13 + k), y, 0xffffff, 0.05);
-      for (let k = 0; k < 5; k++) sf.add(Math.round(x1 + k), y, 0xffffff, 0.03);
-    }
-    for (let y = 0; y < CAGE.top; y++)
-      for (let x = 0; x < VIEW_W; x++) {
-        let c: number;
-        if (y < 2) c = FRAME[0];
-        else if (y === CAGE.top - 2) c = FRAME[3];
-        else if (y === CAGE.top - 1) c = FRAME[1];
-        else c = x % 3 === 0 || y % 3 === 1 ? FRAME[2] : FRAME[0];
-        sf.px(x, y, c);
-      }
-    for (let y = CAGE.top; y < VIEW_H; y++)
-      for (let k = 0; k < CAGE.left; k++) {
-        const c = k < 2 || k === CAGE.left - 1 ? FRAME[0] : k === 3 ? FRAME[3] : FRAME[1];
-        sf.px(k, y, c);
-        sf.px(VIEW_W - 1 - k, y, k === 3 ? FRAME[2] : c);
-      }
-    for (let y = VIEW_H - 4; y < VIEW_H; y++)
-      for (let x = CAGE.left; x < CAGE.right; x++) sf.px(x, y, y === VIEW_H - 4 ? FRAME[3] : y >= VIEW_H - 2 ? FRAME[0] : FRAME[1]);
-  }
-
   private drawFinger(sf: Surface, f: Pt): void {
     // a finger reaching in from the right
     const y0 = Math.round(f.y);
@@ -698,7 +644,7 @@ export class CageHabitat implements Habitat {
   private drawFood(sf: Surface, time: number): void {
     const m = this.model, s = m.s;
     // the bowl
-    groundShadow(sf, SPOT.bowl, 13, 0.3);
+    groundShadow(sf, SPOT.bowl, GROUND, 13, 0.3);
     for (let dx = -11; dx <= 11; dx++) {
       const d = Math.round(5 * Math.sqrt(1 - (dx / 11) ** 2));
       for (let k = 0; k <= d; k++) {
@@ -768,7 +714,7 @@ export class CageHabitat implements Habitat {
 
     // the sand bath, once it is unlocked: sand heaped in a little dish
     if (m.can('bath')) {
-      groundShadow(sf, SPOT.bath, 16, 0.3);
+      groundShadow(sf, SPOT.bath, GROUND, 16, 0.3);
       for (let dx = -12; dx <= 12; dx++) {
         const h = Math.round(3 * Math.sqrt(1 - (dx / 12.5) ** 2));
         for (let k = 0; k < h; k++) sf.px(SPOT.bath + dx, GROUND - 5 - k, k === h - 1 ? 0xf8ecc8 : hash2(dx, k, 417) > 0.5 ? 0xead6a4 : 0xdcc490);
@@ -815,8 +761,8 @@ export class CageHabitat implements Habitat {
           if (d < 1) sf.add(x, y, 0xffd890, 0.26 * (1 - d) ** 1.5);
         }
     if (m.dark(env)) sf.multiply(0.42, 0.48, 0.72);
-    this.drawTank(sf);
-    this.drawLamp(sf, s.lamp);
+    drawGlassTank(sf, CAGE.left, CAGE.right, CAGE.top);
+    drawDomeLamp(sf, LAMP.x, LAMP.y, s.lamp, [0x6aaa96, 0x4a8a78, 0x2e6a5a], 0x1e4a3e);
   }
 
   /** How the hamster looks right now, or null when it is hidden. */

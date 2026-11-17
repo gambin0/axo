@@ -1,14 +1,17 @@
 import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawCrab, drawMound, drawShell, shellRadius } from './art';
-import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, TANK, type Shell } from './model';
+import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, TANK, type Pt, type Shell } from './model';
 
 const SAND = [0xe8d6a8, 0xd2bc8a, 0xb89f70, 0x967f58];
-const WALL = [0xf2e2c4, 0xe6cfa6, 0xd2b88a];
-const WOOD = [0xa27c52, 0x82603c, 0x5e4528, 0x3e2d1a];
+const DAMP = [0xb09670, 0x96805c, 0x7e6a4c, 0x66543c];
+const DRIFT = [0xe6dcc6, 0xc4b496, 0x9a8a6c, 0x6a5e48];
+const LAMP = { x: 30, y: 11 };
+const GAUGE = { x: 292, y: 36 };
 const COCO = [0x9a7248, 0x7a5430, 0x573a20, 0x3a2614];
 
 const fitWord = { cramped: 'Too small', snug: 'Just right', roomy: 'Roomy' } as const;
@@ -240,13 +243,68 @@ export class CrabHabitat implements Habitat {
 
   // ---- drawing -----------------------------------------------------------
 
-  /** Back wall, sand bed, branch and coconut hide: everything that never moves. */
+  /** The beach poster on the back glass, sand bed, driftwood, vine and coconut hide: everything that never moves. */
   private buildBackground(): void {
     const sf = this.bg;
+    // a beach scene printed on the back glass, a little faded
+    const HORIZON = 86, SHORE = 110;
     for (let y = 0; y < VIEW_H; y++)
-      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(WALL, y / TANK.sand + Math.sin(x * 0.02) * 0.05, x, y));
-    // the branch: a gnarled limb leaning up and to the left
+      for (let x = 0; x < VIEW_W; x++) {
+        let c: number;
+        if (y < HORIZON) {
+          c = mix(0x84c4ec, 0xdcf0f6, y / HORIZON);
+          const sun = Math.hypot(x - 268, y - 30);
+          if (sun < 8) c = 0xfff4c0;
+          else if (sun < 20) c = mix(c, 0xfff4d0, 0.5 * (1 - (sun - 8) / 12));
+          const puff = (cx: number, cy: number, rx: number, ry: number) => ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1;
+          if (puff(70, 34, 16, 5) || puff(80, 29, 9, 5) || puff(62, 31, 7, 4)) c = mix(c, 0xffffff, y > 34 ? 0.75 : 0.92);
+          if (puff(176, 52, 13, 3.5) || puff(184, 49, 7, 3.5)) c = mix(c, 0xffffff, y > 52 ? 0.7 : 0.88);
+          // a little island with a palm on the horizon
+          const isle = HORIZON - 7 * Math.sqrt(Math.max(0, 1 - ((x - 214) / 24) ** 2));
+          if (y >= isle && Math.abs(x - 214) < 24) c = y < isle + 2 ? 0x7ab85a : 0x5a9a48;
+          const trunkX = 210 + (HORIZON - 7 - y) * 0.25;
+          if (y > 62 && y < HORIZON - 6 && Math.abs(x - trunkX) < 1) c = 0x8a6a48;
+          for (const [a, l] of [[-2.6, 12], [-2.1, 10], [-0.6, 12], [-1.1, 10], [-1.6, 7]]) {
+            const fx = x - 216, fy = y - 62;
+            const along = fx * Math.cos(a) + fy * Math.sin(a), across = -fx * Math.sin(a) + fy * Math.cos(a);
+            if (along > 0 && along < l && Math.abs(across - along * along * 0.03) < 1.4 - along / l) c = 0x4a8a3e;
+          }
+        } else if (y < SHORE) {
+          // the sea: deep at the horizon, turquoise in the shallows, with lines of surf
+          const t = (y - HORIZON) / (SHORE - HORIZON);
+          c = dither([0x3a8ab8, 0x4aa4c4, 0x6cc4c8, 0x8ad8cc], t, x, y);
+          if (hash2(Math.floor((x + y * 7) / 9), y, 130) > 0.82 - t * 0.2) c = mix(c, 0xffffff, 0.45 + t * 0.3);
+          if (y >= SHORE - 2 - Math.round(Math.sin(x * 0.09) * 1.5)) c = 0xf4fbfa;
+        } else {
+          c = dither([0xf6e8c4, 0xead8ac], (y - SHORE) / 22 + hash2(x, y, 131) * 0.3, x, y);
+          // a starfish on the poster beach
+          const fx = x - 186, fy = y - 118, r = Math.hypot(fx, fy), ang = Math.atan2(fy, fx);
+          if (r < 2.2 + 2.6 * Math.max(0, Math.cos(ang * 5 + 0.3)) ** 2) c = r < 1.5 ? 0xf8a070 : 0xe8784a;
+        }
+        // faded print, darker near the sand where the glass meets the substrate
+        c = mix(c, 0xf4ecdc, 0.25);
+        if (y > TANK.sand - 14) c = mix(c, 0x6a5a44, ((y - (TANK.sand - 14)) / 14) * 0.3);
+        sf.px(x, y, c);
+      }
+
+    // a plastic vine clipped along the lid, drooping in loops
+    const vine: Pt[] = [];
+    for (let x = 300; x >= 130; x -= 0.5) {
+      const loop = Math.max(0, Math.sin((x - 130) * 0.055)) ** 2;
+      vine.push({ x, y: TANK.top + 2 + loop * (18 + 10 * Math.sin(x * 0.013)) });
+    }
+    vine.forEach((p, i) => {
+      sf.px(Math.round(p.x), Math.round(p.y), 0x3a6a2e);
+      if (i % 9 === 0) {
+        const side = (i / 9) % 2 ? 1 : -1;
+        sf.disc(p.x, p.y + side * 2.2, 2.2, 1.6, 0x4a8a3a);
+        sf.disc(p.x - 0.5, p.y + side * 2.2 - 0.5, 1.2, 0.8, 0x7ab85a);
+      }
+    });
+
+    // the driftwood: a gnarled, sun-bleached limb leaning up and to the left
     const limb = (pts: readonly { x: number; y: number }[], r0: number, r1: number) => {
+      let arc = 0;
       for (let i = 1; i < pts.length; i++) {
         const A = pts[i - 1], B = pts[i];
         const n = Math.ceil(Math.hypot(B.x - A.x, B.y - A.y));
@@ -255,71 +313,136 @@ export class CrabHabitat implements Habitat {
           const r = r0 + (r1 - r0) * ((i - 1 + f) / (pts.length - 1));
           for (let d = -Math.ceil(r); d <= Math.ceil(r); d++) {
             if (Math.abs(d) > r) continue;
-            const t = (d + r) / (2 * r) + (hash2(Math.round(cx / 3), d, 121) > 0.8 ? 0.15 : 0);
-            sf.px(Math.round(cx), Math.round(cy + d - 3), dither(WOOD, clamp(t, 0, 1), Math.round(cx), Math.round(cy + d)));
+            let t = (d + r) / (2 * r);
+            // grain running along the wood
+            if (hash2(Math.round(((d + r) / (2 * r)) * 6), Math.floor((arc + k) / 7), 121) > 0.72) t += 0.22;
+            if (Math.abs(d) > r - 0.8) t += 0.25;
+            sf.px(Math.round(cx), Math.round(cy + d - 3), dither(DRIFT, clamp(t, 0, 1), Math.round(cx), Math.round(cy + d)));
           }
         }
+        arc += n;
       }
     };
     // the root runs down below the surface, so the sand (drawn after) covers its foot
-    limb([{ x: 146, y: 152 }, ...BRANCH], 6, 1);
-    limb([BRANCH[2], { x: 112, y: 70 }, { x: 118, y: 52 }], 2.2, 0.4);
-    limb([BRANCH[4], { x: 56, y: 88 }, { x: 44, y: 100 }], 1.8, 0.4);
-    // sand
+    limb([{ x: 146, y: 152 }, ...BRANCH], 6.5, 1.4);
+    limb([BRANCH[2], { x: 112, y: 70 }, { x: 118, y: 52 }], 2.4, 0.6);
+    limb([BRANCH[4], { x: 56, y: 88 }, { x: 44, y: 100 }], 2, 0.6);
+    for (const [kx, ky] of [[110, 102], [74, 73]]) {
+      sf.disc(kx, ky, 1.6, 1.2, DRIFT[3]);
+      sf.px(kx - 1, ky - 1, DRIFT[1]);
+    }
+
+    // sand: dry and pale on top, damp and darker further down, with pebbles and bits of coral
     for (let x = 0; x < VIEW_W; x++) {
       const top = sandY(x);
       for (let y = top; y < VIEW_H; y++) {
         const n = hash2(x, y, 120);
-        let c = dither(SAND, (y - top) / 36 + n * 0.4, x, y);
+        const depth = y - top;
+        let c = depth < 16 ? dither(SAND, depth / 30 + n * 0.35, x, y) : dither(DAMP, (depth - 16) / 30 + n * 0.35 + Math.sin(x * 0.05) * 0.08, x, y);
+        if (depth >= 14 && depth < 18) c = mix(c, DAMP[1], (depth - 14) / 8);
         if (y === top) c = mix(c, 0xfff3d0, 0.4);
-        if (n > 0.97) c = 0x7a6a50;
-        else if (n < 0.02) c = 0xfff3d0;
+        if (n > 0.975) c = 0x7a6a50;
+        else if (n < 0.018) c = depth < 16 ? 0xfff3d0 : SAND[2];
+        else if (n < 0.024) c = 0xf4b0a8; // crushed coral
         sf.px(x, y, c);
       }
     }
-    // coconut hide: half a husk with a doorway
+    for (let i = 0; i < 22; i++) {
+      const px = 10 + hash2(i, 1, 126) * 300, py = sandY(Math.round(px)) + 4 + hash2(i, 2, 126) * 40;
+      const r = 1 + hash2(i, 3, 126) * 1.6;
+      const grey = mix(0x8a8478, 0xc8c0b0, hash2(i, 4, 126));
+      sf.disc(px, py, r + 0.6, r, grey);
+      sf.px(Math.round(px - r * 0.4), Math.round(py - r * 0.4), mix(grey, 0xffffff, 0.4));
+    }
+    // moss tucked in the corners
+    for (const [mx, mw] of [[18, 12], [306, 8]])
+      for (let dx = -mw; dx <= mw; dx++) {
+        const h = Math.round(3 * Math.sqrt(1 - (dx / (mw + 0.5)) ** 2) + hash2(mx + dx, 0, 127) * 1.5);
+        for (let k = 0; k < h; k++) sf.px(mx + dx, sandY(mx + dx) - k, k === h - 1 ? 0x8ac65a : hash2(mx + dx, k, 128) > 0.5 ? 0x5a9a40 : 0x4a8434);
+      }
+
+    // coconut hide: half a husk with a doorway, its cut edge pale
+    groundShadow(sf, COCONUT.x + 2, TANK.sand + 2, COCONUT.r + 3, 0.4);
     for (let y = TANK.sand - COCONUT.r - 4; y <= TANK.sand + 4; y++)
       for (let x = COCONUT.x - COCONUT.r - 2; x <= COCONUT.x + COCONUT.r + 2; x++) {
         const dx = (x - COCONUT.x) / COCONUT.r, dy = (y - (TANK.sand + 2)) / (COCONUT.r * 0.95);
         const e = dx * dx + dy * dy;
         if (e > 1 || dy > 0) continue;
-        const door = ((x - (COCONUT.x - 6)) / 14) ** 2 + ((y - (TANK.sand + 2)) / 14) ** 2 < 1;
-        if (door) {
-          sf.px(x, y, dither([0x2a1c10, 0x3a281a], hash2(x, y, 122), x, y));
+        const doorE = ((x - (COCONUT.x - 6)) / 14) ** 2 + ((y - (TANK.sand + 2)) / 14) ** 2;
+        if (doorE < 1) {
+          sf.px(x, y, doorE > 0.8 ? 0xd8b888 : dither([0x2a1c10, 0x3a281a], hash2(x, y, 122), x, y));
           continue;
         }
-        let t = 0.35 + -dy * 0.5 - dx * 0.2 + (hash2(x >> 1, y, 123) - 0.5) * 0.3;
-        if (e > 0.9) t -= 0.2;
+        // hairy husk: fibres running over the dome
+        let t = 0.35 + -dy * 0.5 - dx * 0.25 + (hash2(x, y >> 2, 123) - 0.5) * 0.4;
+        if (e > 0.9) t -= 0.25;
         sf.px(x, y, dither(COCO, clamp(1 - t, 0, 1), x, y));
       }
   }
 
-  private dish(sf: Surface, x: number, level: number, kind: 'fresh' | 'salt'): void {
-    const y = sandY(x);
-    for (let dx = -11; dx <= 11; dx++) {
-      const depth = Math.round(3 * Math.sqrt(1 - (dx / 11) ** 2));
-      for (let k = 0; k < depth + 1; k++) sf.px(x + dx, y - 1 + k, k === 0 ? 0xd9d2c2 : dither([0xbdb4a2, 0x9a917f], k / 4, x + dx, y + k));
-      // water in the bowl
-      if (level > 0.02 && Math.abs(dx) < 10)
-        sf.px(x + dx, y - 1 + Math.max(0, 2 - Math.round(level * 2)), kind === 'salt' ? (dx % 3 ? 0x8fd0d8 : 0xbfe8ee) : dx % 3 ? 0xa8dcf2 : 0xd4f0fb);
+  /** A shallow dish sunk into the sand, seen from just above. */
+  private dish(sf: Surface, x: number, level: number, kind: 'fresh' | 'salt' | 'food'): void {
+    const y = sandY(x) - 1;
+    const body = kind === 'food' ? [0xd8784a, 0xb05a32, 0x82401e] : [0xf0ebe0, 0xd0c8b8, 0xa49c8c];
+    groundShadow(sf, x + 1, y + 3, 14, 0.25);
+    for (let k = 1; k <= 3; k++)
+      for (let dx = -12 + k; dx <= 12 - k; dx++) sf.px(x + dx, y + k, dither(body, k / 3.5 + (dx > 6 ? 0.3 : 0), x + dx, y + k));
+    const wet = kind === 'salt' ? [0xa8e2e2, 0x6ec4c8, 0x4aa4b0] : [0xc4ecfa, 0x8ccff0, 0x5aa8d8];
+    const wr = 10 * (0.55 + 0.45 * level);
+    for (let py = y - 4; py <= y + 1; py++)
+      for (let dx = -12; dx <= 12; dx++) {
+        const oy = py - (y - 1.5);
+        if ((dx / 12) ** 2 + (oy / 3.5) ** 2 > 1) continue;
+        let c = oy < 0 ? body[0] : mix(body[0], body[1], 0.4);
+        if ((dx / 10) ** 2 + (oy / 2.4) ** 2 <= 1) {
+          c = mix(body[1], 0x000000, 0.15);
+          if (kind !== 'food' && level > 0.02 && (dx / wr) ** 2 + (oy / (2.4 * wr / 10)) ** 2 <= 1) c = oy < -0.5 ? wet[0] : dx > 3 ? wet[2] : wet[1];
+        }
+        sf.px(x + dx, py, c);
+      }
+    if (kind !== 'food' && level > 0.02) {
+      sf.px(x - 4, y - 2, 0xffffff);
+      sf.px(x - 3, y - 2, 0xffffff);
+      if (kind === 'salt') for (let i = 0; i < 3; i++) sf.px(x - 5 + i * 5, y - 1 + (i % 2), 0xffffff);
     }
-    sf.rect(x - 11, y - 2, 23, 1, 0xf0eadc);
-    if (kind === 'salt' && level > 0.02) for (let i = 0; i < 3; i++) sf.px(x - 6 + i * 5, y - 1, 0xffffff);
+    if (kind === 'food') {
+      const bits = Math.round(level * 11);
+      const cols = [0xe0405a, 0x8fbf4a, 0xf2b84a, 0xf08a6a];
+      for (let i = 0; i < bits; i++) {
+        const bx = x - 7 + ((i * 5) % 14), by = y - 2 - ((i * 7) % 3) - (i > 6 ? 1 : 0);
+        sf.px(bx, by, cols[i % 4]);
+        sf.px(bx + 1, by, mix(cols[i % 4], 0x000000, 0.25));
+        sf.px(bx, by - 1, mix(cols[i % 4], 0xffffff, 0.35));
+      }
+    }
   }
 
-  private foodDish(sf: Surface, x: number, level: number): void {
-    const y = sandY(x);
-    for (let dx = -10; dx <= 10; dx++) {
-      const depth = Math.round(2.5 * Math.sqrt(1 - (dx / 10) ** 2));
-      for (let k = 0; k < depth + 1; k++) sf.px(x + dx, y - 1 + k, k === 0 ? 0xcf6a3a : dither([0xa84e2a, 0x7e3a1e], k / 3, x + dx, y + k));
+  /** A humidity gauge stuck to the glass. Its needle follows how damp the air is. */
+  private gauge(sf: Surface, humidity: number): void {
+    const cx = GAUGE.x, cy = GAUGE.y, R = 11;
+    const ang = (v: number) => ((150 + v * 2.4) * Math.PI) / 180;
+    for (let y = cy - R - 1; y <= cy + R + 1; y++)
+      for (let x = cx - R - 1; x <= cx + R + 1; x++) {
+        const d = Math.hypot(x - cx, y - cy);
+        if (d > R + 0.5) continue;
+        if (d > R - 0.5) sf.px(x, y, 0x4a4a54);
+        else if (d > R - 1.5) sf.px(x, y, y < cy ? 0xe8e8f0 : 0xa8a8b4);
+        else sf.px(x, y, 0xfaf6ec);
+      }
+    for (let v = 0; v <= 100; v += 2) {
+      const a = ang(v);
+      const c = v < 35 ? 0xe06048 : v < 55 ? 0xf0b840 : 0x5ab05a;
+      for (const r of [7.5, 8.5]) sf.px(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), c);
     }
-    const bits = Math.round(level * 9);
-    const cols = [0xe0405a, 0x8fbf4a, 0xf2b84a, 0xf08a6a];
-    for (let i = 0; i < bits; i++) {
-      const bx = x - 7 + ((i * 5) % 15), by = y - 2 - ((i * 7) % 3) - (i > 5 ? 1 : 0);
-      sf.px(bx, by, cols[i % 4]);
-      sf.px(bx + 1, by, mix(cols[i % 4], 0x000000, 0.2));
-    }
+    const a = ang(clamp(humidity, 0, 100));
+    for (let r = 0; r < 7; r += 0.5) sf.px(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 0x2a2a30);
+    sf.px(cx, cy, 0xc03030);
+    // a little water drop printed on the face
+    sf.px(cx, cy + 4, 0x5aa8d8);
+    sf.px(cx - 1, cy + 5, 0x5aa8d8);
+    sf.px(cx, cy + 5, 0x8ccff0);
+    sf.px(cx + 1, cy + 5, 0x5aa8d8);
+    sf.px(cx, cy + 6, 0x5aa8d8);
   }
 
   render(sf: Surface, time: number, env: Env): void {
@@ -334,7 +457,7 @@ export class CrabHabitat implements Habitat {
     // dishes, spare shells, crisps
     this.dish(sf, DISH.fresh, s.fresh, 'fresh');
     this.dish(sf, DISH.salt, s.salt, 'salt');
-    this.foodDish(sf, DISH.food, s.food);
+    this.dish(sf, DISH.food, s.food, 'food');
     const drawSpare = (sh: Shell) => {
       const r = shellRadius(sh.size);
       drawShell(sf, sh.x, sandY(sh.x) - r * 0.75, sh.size, sh.shape, sh.pattern, sh.hue, 1, 0.5);
@@ -372,40 +495,26 @@ export class CrabHabitat implements Habitat {
 
     this.particles.render(sf);
 
-    // humid air: droplets run down the glass
+    // humid air: the glass mists up at the top, and droplets run down it
+    for (let y = TANK.top; y < TANK.top + 24; y++) {
+      const a = (s.humidity / 100) * 0.22 * (1 - (y - TANK.top) / 24);
+      for (let x = TANK.left; x < TANK.right; x++) sf.blend(x, y, 0xffffff, a * (0.8 + 0.2 * hash2(x >> 2, y >> 1, 129)));
+    }
     for (let i = 0; i < Math.round(s.humidity / 6); i++) {
       const x = 12 + hash2(i, 1, 124) * 296, y = 14 + ((hash2(i, 2, 124) * 100 + time * (1 + hash2(i, 3, 124) * 2)) % 100);
       sf.blend(x, y, 0xffffff, 0.55);
       sf.blend(x, y + 1, 0xd8eef2, 0.4);
     }
+    this.gauge(sf, s.humidity);
 
-    if (s.lamp) {
-      // a heat lamp glowing in the top corner
-      for (let y = 0; y < 90; y++)
-        for (let x = 0; x < 150; x++) {
-          const d = Math.hypot(x - 10, y - 2) / 110;
-          if (d < 1) sf.add(x, y, 0xffd890, 0.28 * (1 - d) ** 1.5);
+    if (s.lamp)
+      for (let y = TANK.top; y < 110; y++)
+        for (let x = TANK.left; x < 170; x++) {
+          const d = Math.hypot(x - LAMP.x, (y - LAMP.y) * 1.1) / 140;
+          if (d < 1) sf.add(x, y, 0xffc070, 0.3 * (1 - d) ** 1.5);
         }
-      sf.rect(0, 0, 26, 5, 0x3a3a3a);
-      sf.rect(2, 5, 22, 2, 0xffd890);
-    }
     if (dark) sf.multiply(0.45, 0.5, 0.72);
-
-    for (let i = 0; i < 80; i++) {
-      sf.add(50 + i, 14 + i * 1.5, 0xffffff, 0.05);
-      sf.add(51 + i, 14 + i * 1.5, 0xffffff, 0.05);
-    }
-    for (let x = 0; x < VIEW_W; x++) {
-      sf.px(x, 0, 0x14100c);
-      sf.px(x, 1, 0x14100c);
-      sf.px(x, VIEW_H - 1, 0x14100c);
-      sf.px(x, VIEW_H - 2, 0x14100c);
-    }
-    for (let y = 0; y < VIEW_H; y++) {
-      sf.px(0, y, 0x14100c);
-      sf.px(1, y, 0x14100c);
-      sf.px(VIEW_W - 1, y, 0x14100c);
-      sf.px(VIEW_W - 2, y, 0x14100c);
-    }
+    drawGlassTank(sf, TANK.left, TANK.right, TANK.top);
+    drawDomeLamp(sf, LAMP.x, LAMP.y, s.lamp, [0x9a9aa4, 0x6a6a74, 0x44444e], 0x2a2a30);
   }
 }

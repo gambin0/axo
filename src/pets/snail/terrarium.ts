@@ -1,5 +1,6 @@
 import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
@@ -7,9 +8,14 @@ import { drawBone, drawDropping, drawEggs, drawFood, drawSnail, drawSnailGlass }
 import { BONE, BOX, groundY, SNAIL, STONE, Terrarium, newTerrariumState } from './model';
 
 const SOIL = [0x6a4c34, 0x543a26, 0x402c1c, 0x2e1e12];
-const WALL = [0xcfdcc8, 0xbccdb4, 0xa6b89c];
+const WALL = [0xe2ecd8, 0xd4e2c8, 0xc2d4b4];
+const MIST = 0xdce8d0;
+const LEAF = [0x7ab85a, 0x5a9a44, 0x3a7030];
+const FERN = [0x8ac85e, 0x6aa848, 0x4a8034];
+const LITTER = [0xb87a3a, 0x9a5a2a, 0xc89a48, 0x8a6a3a];
+const LAMP = { x: 30, y: 11 };
 const MOSS = [0x9acb62, 0x6fa840, 0x4a7e2c, 0x32581e];
-const BARK = [0x9a7650, 0x7a5a3a, 0x58402a, 0x3a2a1a];
+const BARK = [0xb08a62, 0x8a6a48, 0x644a30, 0x3a2a1a];
 const STONE_C = [0xc4c4be, 0x9e9e98, 0x76766f, 0x55554f];
 const FOODS = [
   { icon: '🥬', label: 'Lettuce' },
@@ -236,26 +242,67 @@ export class TerrariumHabitat implements Habitat {
 
   // ---- drawing -----------------------------------------------------------
 
-  /** Back wall, soil, bark, stone and plants: everything that never moves. */
+  /**
+   * Everything that never moves: misty greenery at the back, a fern and a trailing vine, coco-fibre
+   * soil with leaf litter, a cork bark hide, the stone, a water dish and a couple of tiny mushrooms.
+   * The back stays pale so snails on the front glass stand out against it.
+   */
   private buildBackground(): void {
     const sf = this.bg;
     for (let y = 0; y < VIEW_H; y++)
-      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(WALL, y / BOX.floor + Math.sin(x * 0.03) * 0.05, x, y));
-    // a little fern and a leafy plant at the back
-    const frond = (bx: number, by: number, dir: number, len: number, seed: number) => {
-      for (let i = 0; i < len; i++) {
-        const t = i / len;
-        const px = bx + dir * i * 0.9, py = by - i * 1.1 + t * t * 14;
-        sf.px(Math.round(px), Math.round(py), MOSS[2]);
-        for (let k = 1; k <= 3 - Math.floor(t * 2.5); k++) {
-          sf.px(Math.round(px), Math.round(py - k), MOSS[hash2(i, k, seed) > 0.5 ? 0 : 1]);
-          sf.px(Math.round(px), Math.round(py + k), MOSS[1]);
+      for (let x = 0; x < VIEW_W; x++) sf.px(x, y, dither(WALL, y / BOX.floor + Math.sin(x * 0.03) * 0.06, x, y));
+
+    /** A leaf from its base along angle a: rib down the middle, one side lit, faded toward the mist. */
+    const leaf = (bx: number, by: number, a: number, len: number, wid: number, ramp: readonly number[], fade: number) => {
+      const ca = Math.cos(a), sa = Math.sin(a);
+      for (let t = 0; t <= len; t += 0.5) {
+        const w = wid * Math.sin(Math.PI * Math.min(1, t / len)) ** 0.7;
+        for (let u = -w; u <= w; u += 0.5) {
+          let c = u < 0 ? ramp[0] : ramp[1];
+          if (Math.abs(u) < 0.5 && t < len * 0.85) c = ramp[2];
+          else if (Math.abs(u) > w - 0.7) c = ramp[2];
+          sf.px(Math.round(bx + ca * t - sa * u), Math.round(by + sa * t + ca * u), mix(c, MIST, fade));
         }
       }
     };
-    for (let i = 0; i < 7; i++) frond(40 + i * 3, BOX.floor - 2, i % 2 ? 1 : -1, 22 + i * 3, 150 + i);
-    for (let i = 0; i < 6; i++) frond(262 + i * 3, BOX.floor - 2, i % 2 ? 1 : -1, 26 + (i % 3) * 5, 160 + i);
-    // soil
+    const stem = (x0: number, y0: number, x1: number, y1: number, c: number) => {
+      const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0));
+      for (let k = 0; k <= n; k++) sf.px(Math.round(x0 + ((x1 - x0) * k) / n + Math.sin(k * 0.2) * 0.6), Math.round(y0 + ((y1 - y0) * k) / n), c);
+    };
+    // far back: big soft leaves fading into the mist
+    for (let i = 0; i < 16; i++) {
+      const bx = 14 + i * 19 + hash2(i, 1, 150) * 10, top = 58 + hash2(i, 2, 150) * 56;
+      const fade = 0.62 + (Math.abs(bx - 160) < 70 ? 0.12 : 0);
+      stem(bx, BOX.floor, bx + (hash2(i, 3, 150) - 0.5) * 10, top, mix(MOSS[2], MIST, fade + 0.15));
+      leaf(bx + (hash2(i, 3, 150) - 0.5) * 10, top, -Math.PI / 2 + (hash2(i, 4, 150) - 0.5) * 1.6, 18 + hash2(i, 5, 150) * 14, 5 + hash2(i, 6, 150) * 3, LEAF, fade);
+    }
+    // ferns rising from the soil at both ends
+    const fern = (bx: number, dir: number, len: number, seed: number) => {
+      let px = bx, py = BOX.floor - 1;
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        // upright at the base, arching outward toward the tip
+        const a = -Math.PI / 2 + dir * (0.12 + t * t * 1.5);
+        px += Math.cos(a);
+        py += Math.sin(a);
+        sf.px(Math.round(px), Math.round(py), MOSS[3]);
+        if (i > 4 && i % 3 === 0) {
+          const l = (1 - t) * 8 + 2;
+          for (const side of [-1, 1]) leaf(px, py, a + side * 1.05, l, 1.1, FERN, hash2(i, side, seed) * 0.1 + (seed % 2) * 0.15);
+        }
+      }
+    };
+    for (let i = 0; i < 4; i++) fern(34 + i * 5, i % 2 ? 1 : -1, 46 + i * 7, 160 + i);
+    for (let i = 0; i < 4; i++) fern(268 + i * 5, i % 2 ? 1 : -1, 50 + (i % 3) * 8, 170 + i);
+    // a trailing vine hanging from the lid
+    for (let i = 0; i <= 120; i++) {
+      const t = i / 120;
+      const vx = 92 + t * 96, vy = BOX.top + 1 + Math.sin(t * Math.PI) * 30 + Math.sin(t * 9) * 1.5;
+      sf.px(Math.round(vx), Math.round(vy), MOSS[3]);
+      if (i % 8 === 4) leaf(vx, vy, Math.PI / 2 + ((i / 8) % 2 ? 0.8 : -0.8), 7, 3.2, LEAF, 0);
+    }
+
+    // soil: coco fibre, darker further down, with strands through it
     for (let x = 0; x < VIEW_W; x++) {
       const top = groundY(x);
       for (let y = top; y < VIEW_H; y++) {
@@ -267,36 +314,80 @@ export class TerrariumHabitat implements Habitat {
         sf.px(x, y, c);
       }
     }
-    // moss tufts along the soil
-    for (let x = 14; x < 300; x += 3) {
-      if (hash2(x, 1, 141) < 0.45) continue;
-      const h = 1 + Math.floor(hash2(x, 2, 141) * 3);
-      for (let k = 0; k < h; k++) sf.px(x, groundY(x) - k - 1, MOSS[(k + x) % 3]);
+    for (let i = 0; i < 140; i++) {
+      const x0 = hash2(i, 1, 147) * VIEW_W, y0 = BOX.floor + 4 + hash2(i, 2, 147) * 34, a = (hash2(i, 3, 147) - 0.5) * 1.2;
+      for (let k = 0; k < 3 + hash2(i, 4, 147) * 5; k++) sf.px(Math.round(x0 + Math.cos(a) * k), Math.round(y0 + Math.sin(a) * k), hash2(i, 5, 147) > 0.5 ? 0x7a5a3c : 0x8e6c48);
     }
-    // the flat stone
+    // the flat stone, rounded, with a shadow under it
+    groundShadow(sf, STONE.x + 1, BOX.floor, STONE.w / 2 + 2, 0.35, 0x1e140c);
     for (let x = STONE.x - STONE.w / 2; x <= STONE.x + STONE.w / 2; x++) {
       const d = (x - STONE.x) / (STONE.w / 2);
       if (Math.abs(d) >= 1) continue;
       const top = groundY(x);
-      for (let y = top; y < top + 5; y++) sf.px(Math.round(x), y, dither(STONE_C, (y - top) / 5 + (d + 1) * 0.15 + hash2(x, y, 142) * 0.2, x, y));
+      for (let y = top; y < BOX.floor + 2; y++) {
+        let t = (y - top) / (BOX.floor + 2 - top) * 0.7 + (d + 1) * 0.15 + hash2(x, y, 142) * 0.15;
+        if (y === top) t = d < 0.2 ? -0.1 : 0.2;
+        sf.px(Math.round(x), y, dither(STONE_C, clamp(t, 0, 1), x, y));
+      }
     }
-    // a curved piece of bark leaning on the left
+    // moss tufts and fallen leaves on the soil
+    for (let x = 14; x < 300; x += 3) {
+      if (hash2(x, 1, 141) < 0.5) continue;
+      const h = 1 + Math.floor(hash2(x, 2, 141) * 3);
+      for (let k = 0; k < h; k++) sf.px(x, groundY(x) - k - 1, MOSS[(k + x) % 3]);
+    }
+    for (let i = 0; i < 26; i++) {
+      const x = 10 + hash2(i, 1, 148) * 300;
+      if (Math.abs(x - STONE.x) < STONE.w / 2 + 2 || Math.abs(x - 252) < 14) continue;
+      const col = LITTER[Math.floor(hash2(i, 2, 148) * LITTER.length)];
+      const a = (hash2(i, 3, 148) - 0.5) * 0.5 + (i % 2 ? 0 : Math.PI);
+      leaf(x, groundY(Math.round(x)) - 0.5, a, 5 + hash2(i, 4, 148) * 3, 1.3, [col, mix(col, 0xffffff, 0.2), mix(col, 0x000000, 0.3)], 0);
+    }
+    // a curved piece of cork bark, half buried, for hiding under
+    groundShadow(sf, 58, BOX.floor, 38, 0.35, 0x1e140c);
     for (let x = 22; x <= 92; x++) {
       const d = (x - 57) / 35;
       const top = BOX.floor - Math.round(16 * Math.sqrt(Math.max(0, 1 - d * d))) - 1;
       for (let y = top; y < BOX.floor + 2; y++) {
         if (y > BOX.floor - 6 && Math.abs(d) < 0.38) continue; // the doorway under it
-        const ridge = hash2(x >> 1, y, 143) > 0.78 ? 0.18 : 0;
-        sf.px(x, y, dither(BARK, (y - top) / 18 + ridge + (hash2(x, y, 144) - 0.5) * 0.15, x, y));
+        // cork: rough, with deep cracks running along the curve
+        const crack = hash2(x >> 2, Math.round((y - top) / 2.5), 143) > 0.7 && hash2(x, y, 149) > 0.3;
+        let t = (y - top) / 20 + (crack ? 0.45 : 0) + (hash2(x, y, 144) - 0.5) * 0.25 - (d < -0.3 ? 0.1 : 0);
+        if (y === top) t = -0.1;
+        sf.px(x, y, dither(BARK, clamp(t, 0, 1), x, y));
+      }
+      // a little moss growing on top
+      if (Math.abs(d + 0.15) < 0.35 && hash2(x, 0, 151) > 0.3) {
+        sf.px(x, top - 1, MOSS[hash2(x, 1, 151) > 0.5 ? 0 : 1]);
+        if (hash2(x, 2, 151) > 0.5) sf.px(x, top - 2, MOSS[0]);
       }
     }
-    for (let y = BOX.floor - 6; y < BOX.floor + 2; y++) for (let x = 44; x <= 70; x++) sf.px(x, y, dither([0x2a1c10, 0x3a281a], hash2(x, y, 145), x, y));
-    // a shallow water dish
-    const dx0 = 252;
-    for (let dx = -12; dx <= 12; dx++) {
-      const depth = Math.round(3 * Math.sqrt(1 - (dx / 12) ** 2));
-      for (let k = 0; k <= depth; k++) sf.px(dx0 + dx, BOX.floor - 1 + k, k === 0 ? 0xd9d2c2 : dither([0xbdb4a2, 0x9a917f], k / 4, dx0 + dx, k));
-      if (Math.abs(dx) < 11) sf.px(dx0 + dx, BOX.floor - 1, dx % 3 ? 0xa8dcf2 : 0xd4f0fb);
+    for (let y = BOX.floor - 6; y < BOX.floor + 2; y++)
+      for (let x = 44; x <= 70; x++) sf.px(x, y, dither([0x1a120a, 0x2a1c10, 0x3a281a], (y - (BOX.floor - 6)) / 10 + hash2(x, y, 145) * 0.3, x, y));
+    // a shallow water dish sunk into the soil, seen from just above
+    const wx = 252, wy = groundY(252) - 1;
+    groundShadow(sf, wx + 1, wy + 3, 14, 0.3, 0x1e140c);
+    for (let k = 1; k <= 3; k++)
+      for (let dx = -12 + k; dx <= 12 - k; dx++) sf.px(wx + dx, wy + k, dither([0xe8e2d6, 0xc8c0b0, 0xa49c8c], k / 3.5 + (dx > 6 ? 0.3 : 0), wx + dx, wy + k));
+    for (let py = wy - 4; py <= wy + 1; py++)
+      for (let dx = -12; dx <= 12; dx++) {
+        const oy = py - (wy - 1.5);
+        if ((dx / 12) ** 2 + (oy / 3.5) ** 2 > 1) continue;
+        let c = oy < 0 ? 0xf0ebe0 : 0xdcd4c4;
+        if ((dx / 10) ** 2 + (oy / 2.4) ** 2 <= 1) c = oy < -0.5 ? 0xc4ecfa : dx > 3 ? 0x5aa8d8 : 0x8ccff0;
+        sf.px(wx + dx, py, c);
+      }
+    sf.px(wx - 4, wy - 2, 0xffffff);
+    sf.px(wx - 3, wy - 2, 0xffffff);
+    // two tiny mushrooms by the bark
+    for (const [mx, h, r] of [[100, 6, 3.5], [106, 4, 2.5]]) {
+      const g = groundY(mx);
+      for (let y = g - h; y < g; y++) sf.px(mx, y, 0xf0e6d0);
+      for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+        const ch = Math.round(Math.sqrt(Math.max(0, 1 - (dx / (r + 0.5)) ** 2)) * r * 0.7);
+        for (let k = 0; k <= ch; k++) sf.px(mx + dx, g - h - k, k === ch ? 0xd8a070 : dx > 0 ? 0x9a5e34 : 0xb87442);
+        sf.px(mx + dx, g - h + 1, 0xe0d0b0);
+      }
     }
   }
 
@@ -337,39 +428,25 @@ export class TerrariumHabitat implements Habitat {
 
     this.particles.render(sf);
 
-    // damp air: droplets on the glass
+    // damp air: the glass mists up at the top, and droplets run down it
+    for (let y = BOX.top; y < BOX.top + 22; y++) {
+      const a = (s.moisture / 100) * 0.2 * (1 - (y - BOX.top) / 22);
+      for (let x = BOX.left; x < BOX.right; x++) sf.blend(x, y, 0xffffff, a * (0.8 + 0.2 * hash2(x >> 2, y >> 1, 152)));
+    }
     for (let i = 0; i < Math.round(s.moisture / 7); i++) {
       const x = 12 + hash2(i, 1, 146) * 296, y = 14 + ((hash2(i, 2, 146) * 110 + time * (0.8 + hash2(i, 3, 146) * 1.6)) % 110);
       sf.blend(x, y, 0xffffff, 0.5);
       sf.blend(x, y + 1, 0xd8eef2, 0.35);
     }
 
-    if (s.lamp) {
-      for (let y = 0; y < 100; y++)
-        for (let x = 0; x < 170; x++) {
-          const d = Math.hypot(x - 14, y - 2) / 120;
+    if (s.lamp)
+      for (let y = BOX.top; y < 110; y++)
+        for (let x = BOX.left; x < 170; x++) {
+          const d = Math.hypot(x - LAMP.x, (y - LAMP.y) * 1.1) / 140;
           if (d < 1) sf.add(x, y, 0xffe8a8, 0.26 * (1 - d) ** 1.5);
         }
-      sf.rect(0, 0, 28, 5, 0x3a3a3a);
-      sf.rect(2, 5, 24, 2, 0xffe8a8);
-    }
     if (dark) sf.multiply(0.45, 0.52, 0.74);
-
-    for (let i = 0; i < 70; i++) {
-      sf.add(190 + i, 14 + i * 1.6, 0xffffff, 0.05);
-      sf.add(191 + i, 14 + i * 1.6, 0xffffff, 0.05);
-    }
-    for (let x = 0; x < VIEW_W; x++) {
-      sf.px(x, 0, 0x14100c);
-      sf.px(x, 1, 0x14100c);
-      sf.px(x, VIEW_H - 1, 0x14100c);
-      sf.px(x, VIEW_H - 2, 0x14100c);
-    }
-    for (let y = 0; y < VIEW_H; y++) {
-      sf.px(0, y, 0x14100c);
-      sf.px(1, y, 0x14100c);
-      sf.px(VIEW_W - 1, y, 0x14100c);
-      sf.px(VIEW_W - 2, y, 0x14100c);
-    }
+    drawGlassTank(sf, BOX.left, BOX.right, BOX.top);
+    drawDomeLamp(sf, LAMP.x, LAMP.y, s.lamp, [0xf0ece4, 0xd0c8bc, 0xa8a094], 0x787068);
   }
 }
