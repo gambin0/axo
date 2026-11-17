@@ -6,6 +6,7 @@ import { envAt, realClock } from './core/time';
 import { AntHabitat } from './pets/ants/farm';
 import { drawAxolotl } from './pets/axolotl/art';
 import { MORPHS, type Morph } from './pets/axolotl/model';
+import { HiveHabitat } from './pets/bees/hive';
 import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
 import { CrabHabitat } from './pets/crab/tank';
@@ -48,6 +49,10 @@ const PETS: Record<PetId, PetInfo> = {
   snail: {
     title: 'Snail Garden', kind: 'snail terrarium', defaultName: 'Mossy', ask: 'What will you call your snail garden?',
     create: (saved, seed) => new TerrariumHabitat(saved, seed),
+  },
+  bees: {
+    title: 'Beehive', kind: 'beehive', defaultName: 'Honeycomb', ask: 'What will you call your beehive?',
+    create: (saved, seed) => new HiveHabitat(saved, seed),
   },
 };
 const PET_IDS = Object.keys(PETS) as PetId[];
