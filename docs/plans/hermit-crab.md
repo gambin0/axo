@@ -2,6 +2,13 @@
 
 Pet id: `crab`. Read [the shared notes](README.md) first.
 
+> **Built** in `src/pets/crab/`. Differences from this plan:
+> - The crab starts at size 2 in a size 1 shell, so it is cramped and the first thing to do is offer a shell, instead of a first moult 2 minutes in.
+> - The shell is a drawn spiral, not a menu: the Shell tool offers one random shell near the crab's size (the first is always a fit). A crab only swaps when the new shell is clearly better, with a small taste for one pattern.
+> - Food is one tool that fills the dish; wrong food is a Crisps tool that it sniffs and refuses.
+> - A cramped crab grows at 40% speed, which nudges the kids to find a bigger shell.
+> - Not built: the trust-gated shorter hide beyond the tap, the cholla wood, the cuttlebone, and per-food types.
+
 ## The idea
 
 One hermit crab in a sandy tank. It grows by moulting, and each time it outgrows its shell the child offers new ones and the crab chooses. The shell swap is the event the kids wait for; day to day the crab is the most "tappable" pet in the app, because it ducks into its shell and peeks back out.

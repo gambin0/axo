@@ -8,6 +8,7 @@ import { drawAxolotl } from './pets/axolotl/art';
 import { MORPHS, type Morph } from './pets/axolotl/model';
 import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
+import { CrabHabitat } from './pets/crab/tank';
 import { PondHabitat } from './pets/pond/pond';
 import type { Habitat, PetId } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
@@ -38,6 +39,10 @@ const PETS: Record<PetId, PetInfo> = {
   pond: {
     title: 'Tadpole Pond', kind: 'pond', defaultName: 'Lily Pond', ask: 'What will you call your pond?',
     create: (saved, seed) => new PondHabitat(saved, seed),
+  },
+  crab: {
+    title: 'Hermit Crab', kind: 'hermit crab', defaultName: 'Pinchy', ask: 'What will you call your hermit crab?',
+    create: (saved, seed) => new CrabHabitat(saved, seed),
   },
 };
 const PET_IDS = Object.keys(PETS) as PetId[];
