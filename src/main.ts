@@ -10,6 +10,7 @@ import { HiveHabitat } from './pets/bees/hive';
 import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
 import { CrabHabitat } from './pets/crab/tank';
+import { CageHabitat } from './pets/hamster/cage';
 import { PondHabitat } from './pets/pond/pond';
 import { TerrariumHabitat } from './pets/snail/terrarium';
 import type { Habitat, PetId } from './pets/types';
@@ -53,6 +54,10 @@ const PETS: Record<PetId, PetInfo> = {
   bees: {
     title: 'Beehive', kind: 'beehive', defaultName: 'Honeycomb', ask: 'What will you call your beehive?',
     create: (saved, seed) => new HiveHabitat(saved, seed),
+  },
+  hamster: {
+    title: 'Hamster Cage', kind: 'hamster', defaultName: 'Peanut', ask: 'What will you call your hamster?',
+    create: (saved, seed) => new CageHabitat(saved, seed),
   },
 };
 const PET_IDS = Object.keys(PETS) as PetId[];

@@ -2,6 +2,14 @@
 
 Pet id: `hamster`. Read [the shared notes](README.md) first.
 
+> **Built** in `src/pets/hamster/`. Differences from this plan:
+> - The art is procedural, not string sprites: each pose is a set of soft shaded ellipses (rump, body, head, snout, cheek pouch) with fur texture, a dark rim, a cream belly, ears, eyes and whiskers. Cheeks fill gradually and the pouch shows a crease; breathing, blinks and whisker twitches are built in. Poses: walk, sniff, sit, eat, groom, curl, run, dig. Four coats (golden, snowy, smoky, banded), picked at random.
+> - The burrow is four dig jobs (entrance, nest, food store, back door; 8 days of work), carved into the bedding as tunnels the hamster really walks through. Offline digging goes at half speed, and only at night.
+> - Trust is capped at 8 points a day, so it takes about two weeks. Unlocks: sniffs a finger at 15, sand bath at 20, takes treats by hand at 35, tube at 45, climbs on a finger at 60, sleeps in the open at 80. Neglect lets trust slip offline, never below half the best it reached.
+> - Tools: Hand (tap, or hold a finger in the cage), Seeds, Treat (tap the tool again to cycle sunflower seed, carrot, apple, sweets), Water, Clean, Lamp. Seeds are stuffed and hoarded; carrot and apple are eaten on the spot; sweets are refused.
+> - Hamsters are awake 18:00 to 08:00 and nap in the day, but a new hamster is awake for its first few minutes, and a tap wakes it for a couple of minutes.
+> - Not built: a second level, more chew toys, and nest-building with pushed bedding (the nest is drawn with soft bedding instead).
+
 ## The idea
 
 A hamster in a cut-away cage. It is the cuddliest pet in the app and the one with the most personality: it stuffs its cheeks, carries food to a hoard, runs on its wheel and builds a nest. The slow process is the hamster getting tamer and its burrow growing.
