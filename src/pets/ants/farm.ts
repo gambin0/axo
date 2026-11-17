@@ -2,7 +2,7 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { ANTS_SPRITES, BROOD_SPRITES, FOOD_LOOK } from './art';
 import {
   ANTS, Colony, FARM, JOBS, NODES, POLY, STAGE_NAMES, newColonyState, polyLength, polyPrefix,
@@ -133,17 +133,7 @@ export class AntHabitat implements Habitat {
       this.last = { x, y };
       this.dragDist = 0;
       this.shook = false;
-      if (this.tool === 'look') m.tap(x, y);
-      else if (this.tool === 'water') {
-        m.water(x);
-        this.events.push({ type: 'sound', name: 'splash' });
-        if (m.s.moisture > ANTS.soggyAbove) this.events.push({ type: 'toast', text: 'Too soggy! Let the soil dry out a bit.' });
-      } else {
-        const kindId = this.tool as AntFoodKind;
-        const r = m.feed(x, kindId);
-        if (r === 'bad') this.events.push({ type: 'toast', text: "Ants can't eat chocolate. They'll leave it alone." });
-        else if (r === 'full') this.events.push({ type: 'toast', text: "That's plenty of food up there for now!" });
-      }
+      m.tap(x, y);
       return;
     }
     // A vigorous drag gives the farm a (harmless) shake.
@@ -160,8 +150,8 @@ export class AntHabitat implements Habitat {
 
   tools(): Tool[] {
     const list: Tool[] = [{ id: 'look', icon: '👆', label: 'Tap', kind: 'mode' }];
-    for (const f of FOODS) list.push({ id: f.id, icon: f.icon, label: f.label, kind: 'mode' });
-    list.push({ id: 'water', icon: '🚿', label: 'Water', kind: 'mode' });
+    for (const f of FOODS) list.push({ id: f.id, icon: f.icon, label: f.label, kind: 'drag' });
+    list.push({ id: 'water', icon: '🚿', label: 'Water', kind: 'drag' });
     list.push({ id: 'red', icon: '🔴', label: 'Red light', kind: 'toggle', on: this.model.s.redLight });
     return list;
   }
@@ -169,6 +159,27 @@ export class AntHabitat implements Habitat {
   useTool(id: string): void {
     if (id === 'red') this.model.s.redLight = !this.model.s.redLight;
     else this.tool = id;
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    const m = this.model;
+    // tapped: put it on the surface a little way from the nest entrance
+    const x = at ? at.x : FARM.entranceX + 40 + (Math.random() - 0.5) * 40;
+    if (id === 'water') {
+      m.water(x);
+      this.events.push({ type: 'sound', name: 'splash' });
+      if (m.s.moisture > ANTS.soggyAbove) this.events.push({ type: 'toast', text: 'Too soggy! Let the soil dry out a bit.' });
+      return;
+    }
+    if (!FOODS.some((f) => f.id === id)) return;
+    const r = m.feed(x, id as AntFoodKind);
+    if (r === 'bad') this.events.push({ type: 'toast', text: "Ants can't eat chocolate. They'll leave it alone." });
+    else if (r === 'full') this.events.push({ type: 'toast', text: "That's plenty of food up there for now!" });
+  }
+
+  dropHint(_id: string, x: number): DropHint {
+    // everything goes on the surface, above the soil
+    return { x: Math.max(FARM.left + 8, Math.min(FARM.right - 8, x)), y: FARM.surface - 2, ok: true };
   }
 
   stats(): Stat[] {

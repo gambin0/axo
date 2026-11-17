@@ -54,10 +54,8 @@ test('terrarium renders its main moments', () => {
   const h = new TerrariumHabitat(null, 3);
   h.name = 'Mossy';
   h.model.s.moisture = 90;
-  h.useTool('food');
-  h.tool = 'food';
-  h.pointer('down', 250, 120);
-  h.tool = 'hand';
+  h.drop('food', null);
+  h.drop('food', { x: 250, y: 120 });
   for (let n = 0; n < 60 * 22; n++) h.update(1 / 60, 1 / 60, DAY);
   h.render(sf, 20, DAY);
   shoot('snail-tank', sf);

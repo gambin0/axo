@@ -46,11 +46,8 @@ test('hive renders its main moments', () => {
   h.name = 'Honeycomb';
   h.render(sf, 0, DAY);
   shoot('bees-start', sf);
-  h.useTool('plant');
-  h.tool = 'plant';
-  h.pointer('down', 250, 150);
-  h.pointer('down', 194, 150);
-  h.tool = 'hand';
+  h.drop('plant', { x: 250, y: 150 });
+  h.drop('plant', { x: 194, y: 150 });
   h.model.s.flowers[0] = { kind: 0, nectar: 3, age: 0, water: 0 };
   for (let n = 0; n < 60 * 30; n++) h.update(1 / 60, 1 / 60, DAY);
   h.render(sf, 30, DAY);

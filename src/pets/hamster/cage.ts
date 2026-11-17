@@ -3,7 +3,7 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawHamster, type HamPoseName } from './art';
 import {
   BOTTLE, CAGE, GROUND, HAM, Hamster, NEST, newHamsterState, polyPrefix, SPOT, STORE, SWEETS, TREATS, TUBE, tubePath, TUNNELS, tunnelOpen,
@@ -194,16 +194,6 @@ export class CageHabitat implements Habitat {
       this.holding = false;
       return;
     }
-    if (this.tool === 'treat') {
-      if (kind !== 'down') return;
-      const s = m.s;
-      const onHamster = m.hit(x, y) || (!m.underground() && Math.abs(x - s.x) < 30 && y > s.y - 44 && y < GROUND + 4);
-      if (onHamster) {
-        if (m.offerTreat(x) === 'full') this.events.push({ type: 'toast', text: 'There are enough treats in the cage already.' });
-      } else if (s.treatKind === SWEETS) m.offerTreat(x);
-      else if (!m.dropTreat(x)) this.events.push({ type: 'toast', text: 'There are enough treats in the cage already.' });
-      return;
-    }
     if (this.tool === 'clean') {
       if (m.clean(x) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
@@ -221,39 +211,63 @@ export class CageHabitat implements Habitat {
 
   tools(): Tool[] {
     const m = this.model, s = m.s;
-    const t = TREATS[s.treatKind];
     return [
       { id: 'hand', icon: '✋', label: 'Hand', kind: 'mode' },
-      { id: 'seeds', icon: '🌾', label: 'Seeds', kind: 'action', disabled: s.bowl > HAM.bowlMax - 1 },
-      { id: 'treat', icon: t.icon, label: t.name.split(' ')[0], kind: 'mode' },
-      { id: 'water', icon: '💧', label: 'Water', kind: 'action', disabled: s.bottle > 0.9 },
+      { id: 'seeds', icon: '🌾', label: 'Seeds', kind: 'drag' },
+      // each treat is its own button (sunflower seeds come from the Seeds button)
+      ...TREATS.slice(1).map((t, i) => ({ id: `treat:${i + 1}`, icon: t.icon, label: t.name.split(' ')[0], kind: 'drag' as const })),
+      { id: 'water', icon: '💧', label: 'Water', kind: 'drag', disabled: s.bottle > 0.9 },
       { id: 'clean', icon: '🧹', label: 'Clean', kind: 'mode' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: s.lamp },
     ];
   }
 
   useTool(id: string): void {
-    const m = this.model;
+    if (id === 'lamp') this.model.s.lamp = !this.model.s.lamp;
+    else this.tool = id;
+  }
+
+
+  /** Close enough to the hamster to hand it something, rather than dropping it on the floor. */
+  private onHamster(x: number, y: number): boolean {
+    const m = this.model, s = m.s;
+    return m.hit(x, y) || (!m.underground() && Math.abs(x - s.x) < 30 && y > s.y - 44 && y < GROUND + 4);
+  }
+
+  private nearBowl(x: number, y: number): boolean {
+    return Math.abs(x - SPOT.bowl) < 18 && y > GROUND - 30 && y < GROUND + 10;
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    const m = this.model, s = m.s;
     const toast = (text: string) => this.events.push({ type: 'toast', text });
-    switch (id) {
-      case 'seeds':
-        if (!m.fillBowl()) toast('The bowl is full.');
-        break;
-      case 'water':
-        if (!m.refill()) toast('The bottle is full.');
-        break;
-      case 'lamp':
-        m.s.lamp = !m.s.lamp;
-        break;
-      case 'treat':
-        // tapping Treat again picks the next kind
-        if (this.tool === 'treat') m.nextTreatKind();
-        this.tool = 'treat';
-        toast(m.s.treatKind === SWEETS ? 'Sweets? Let us see what happens…' : `${TREATS[m.s.treatKind].name}: tap the cage to drop it, or tap ${this.who()} to offer it. Tap again for another treat.`);
-        break;
-      default:
-        this.tool = id;
+    const tooMany = () => toast('There are enough treats in the cage already.');
+    if (id === 'water') {
+      if (!m.refill()) toast('The bottle is full.');
+      return;
     }
+    // seeds fill the bowl, unless they are put somewhere else: then it is a single sunflower seed
+    if (id === 'seeds' && (!at || this.nearBowl(at.x, at.y))) {
+      if (!m.fillBowl()) toast('The bowl is full.');
+      return;
+    }
+    const kind = id === 'seeds' ? 0 : Number(id.split(':')[1]);
+    if (!(kind >= 0 && kind < TREATS.length)) return;
+    // tapped: offer it to the hamster if it is up and about, otherwise drop it near it
+    const x = at ? at.x : s.x + (s.facing || 1) * 12;
+    if (!at ? !m.underground() && !m.asleep() : this.onHamster(at.x, at.y)) {
+      if (m.offerTreat(x, kind) === 'full') tooMany();
+    } else if (kind === SWEETS) m.offerTreat(x, kind);
+    else if (!m.dropTreat(x, kind)) tooMany();
+  }
+
+  dropHint(id: string, x: number, y: number): DropHint {
+    const s = this.model.s;
+    if (id === 'water') return { x: BOTTLE.x, y: BOTTLE.bottom - 10, ok: true };
+    if (id === 'seeds' && this.nearBowl(x, y)) return { x: SPOT.bowl, y: GROUND - 3, ok: true };
+    if (this.onHamster(x, y)) return { x: s.x, y: s.y - 6, ok: true };
+    // dropped treats land on the bedding, away from the wheel
+    return { x: clamp(Math.round(x), CAGE.left + 14, SPOT.wheel - 40), y: GROUND - 1, ok: true };
   }
 
   stats(): Stat[] {

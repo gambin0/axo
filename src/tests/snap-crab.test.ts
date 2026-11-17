@@ -49,12 +49,10 @@ test('crab tank renders its main moments', () => {
   h.name = 'Pinchy';
   h.model.s.size = 3;
   h.model.s.shell.size = 2;
-  h.useTool('food');
-  h.useTool('shell');
-  h.useTool('shell');
-  h.tool = 'chips';
-  h.pointer('down', 120, 100);
-  h.tool = 'hand';
+  h.drop('food', null);
+  h.drop('shell', null);
+  h.drop('shell', null);
+  h.drop('chips', { x: 120, y: 100 });
   h.render(sf, 1, DAY);
   shoot('crab-tank', sf);
   // walk it through the shop and swap

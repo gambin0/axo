@@ -248,6 +248,27 @@ canvas {
 .tool[aria-pressed='true'] .lbl {
   color: var(--accent);
 }
+.tool[data-drag] {
+  touch-action: none;
+  cursor: grab;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  font-size: 44px;
+  line-height: 1;
+  transform: translate(-50%, -85%) scale(0.9);
+  filter: drop-shadow(0 6px 6px rgb(0 0 0 / 0.45));
+  transition: transform 0.12s;
+}
+.ghost.over {
+  transform: translate(-50%, -85%) scale(1.15);
+}
+.ghost.no {
+  opacity: 0.6;
+}
 .tool:disabled {
   opacity: 0.45;
 }

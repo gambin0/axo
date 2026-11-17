@@ -10,10 +10,21 @@ export interface Tool {
   id: string;
   icon: string;
   label: string;
-  /** mode: stays selected and changes what a tap does. action: fires once. toggle: on/off. */
-  kind: 'mode' | 'action' | 'toggle';
+  /**
+   * mode: stays selected and changes what a tap does. action: fires once. toggle: on/off.
+   * drag: something you give the pet. Drag it into the habitat to put it there, or tap it to
+   * put it in its usual place (the bowl, the dish, next to the pet).
+   */
+  kind: 'mode' | 'action' | 'toggle' | 'drag';
   on?: boolean;
   disabled?: boolean;
+}
+
+/** Where a dragged thing would land if it were let go now. ok is false when it cannot go there. */
+export interface DropHint {
+  x: number;
+  y: number;
+  ok: boolean;
 }
 
 export interface Stat {
@@ -47,6 +58,10 @@ export interface Habitat {
   pointer(kind: 'down' | 'move' | 'up', x: number, y: number): void;
   tools(): Tool[];
   useTool(id: string): void;
+  /** A drag tool let go at a point in the habitat, or tapped (null) to put it in its usual place. */
+  drop(id: string, at: { x: number; y: number } | null): void;
+  /** Where a drag tool held at (x, y) would land, so it can be shown while dragging. */
+  dropHint(id: string, x: number, y: number): DropHint | null;
   stats(): Stat[];
   status(env: Env): Status;
   serialize(): unknown;

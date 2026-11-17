@@ -3,7 +3,7 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawBone, drawDropping, drawEggs, drawFood, drawSnail, drawSnailGlass } from './art';
 import { BONE, BOX, groundY, SNAIL, STONE, Terrarium, newTerrariumState } from './model';
 
@@ -158,10 +158,6 @@ export class TerrariumHabitat implements Habitat {
       m.finger = null;
       return;
     }
-    if (this.tool === 'food') {
-      if (kind === 'down' && !m.feed(x)) this.events.push({ type: 'toast', text: 'That is plenty of food. Wait until they have eaten some.' });
-      return;
-    }
     if (this.tool === 'tidy') {
       if (m.tidy(x) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
@@ -178,10 +174,10 @@ export class TerrariumHabitat implements Habitat {
     const next = FOODS[m.s.foodKind % 3];
     return [
       { id: 'hand', icon: '✋', label: 'Touch', kind: 'mode' },
-      { id: 'food', icon: next.icon, label: next.label, kind: 'mode' },
+      { id: 'food', icon: next.icon, label: next.label, kind: 'drag' },
       { id: 'mist', icon: '💦', label: 'Mist', kind: 'action' },
-      { id: 'bone', icon: '🦴', label: 'Bone', kind: 'action', disabled: m.s.cuttlebone > 0.8 },
-      { id: 'salt', icon: '🧂', label: 'Salt', kind: 'action' },
+      { id: 'bone', icon: '🦴', label: 'Bone', kind: 'drag', disabled: m.s.cuttlebone > 0.8 },
+      { id: 'salt', icon: '🧂', label: 'Salt', kind: 'drag' },
       { id: 'tidy', icon: '🧹', label: 'Tidy', kind: 'mode' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
@@ -189,24 +185,35 @@ export class TerrariumHabitat implements Habitat {
 
   useTool(id: string): void {
     const m = this.model;
-    const toast = (text: string) => this.events.push({ type: 'toast', text });
     switch (id) {
       case 'mist':
         m.mist();
-        break;
-      case 'bone':
-        if (!m.replaceBone()) toast('The cuttlebone is still nice and big.');
-        break;
-      case 'salt':
-        m.refuseSalt();
         break;
       case 'lamp':
         m.s.lamp = !m.s.lamp;
         break;
       default:
         this.tool = id;
-        if (id === 'food') toast('Tap the soil to put the food down.');
     }
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    const m = this.model;
+    const toast = (text: string) => this.events.push({ type: 'toast', text });
+    if (id === 'food') {
+      // tapped: put it down near a snail on the floor
+      const near = m.s.snails.find((sn) => sn.surface === 'floor') ?? m.s.snails[0];
+      const x = at ? at.x : (near ? near.x + 24 : 150);
+      if (!m.feed(x)) toast('That is plenty of food. Wait until they have eaten some.');
+    } else if (id === 'bone') {
+      if (!m.replaceBone()) toast('The cuttlebone is still nice and big.');
+    } else if (id === 'salt') m.refuseSalt();
+  }
+
+  dropHint(id: string, x: number): DropHint {
+    // the cuttlebone always goes back in its corner; everything else goes on the soil where it is dropped
+    const hx = id === 'bone' ? BONE.x : Math.max(BOX.minX + 6, Math.min(BOX.maxX - 12, Math.round(x)));
+    return { x: hx, y: groundY(hx), ok: true };
   }
 
   stats(): Stat[] {

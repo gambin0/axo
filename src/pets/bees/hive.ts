@@ -3,7 +3,7 @@ import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { drawDomeLamp } from '../../render/glass';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawBee, drawCell, drawFeeder, drawFlower, drawJar, drawQueen } from './art';
 import { BEE, cellPos, DANCE_SPOT, ENTR, FEEDER, FLOWERS, GROUND, Hive, HIVE, newHiveState, SLOT_X, type Bee } from './model';
 
@@ -153,14 +153,6 @@ export class HiveHabitat implements Habitat {
   pointer(kind: 'down' | 'move' | 'up', x: number, y: number): void {
     const m = this.model;
     if (kind !== 'down') return;
-    if (this.tool === 'plant') {
-      if (x < HIVE.right + 6) {
-        this.events.push({ type: 'toast', text: 'Plant flowers out in the garden!' });
-        return;
-      }
-      if (m.plant(x) === 'busy') this.events.push({ type: 'toast', text: 'That flower is still fresh. Try an empty spot.' });
-      return;
-    }
     if (Math.hypot(x - ENTR.x, y - ENTR.y) < 16) m.buzzGuards();
     else if (x < HIVE.right) m.tapHive(x, y);
     else this.particles.spawn('ripple', x, y);
@@ -171,9 +163,9 @@ export class HiveHabitat implements Habitat {
     const next = FLOWERS[m.s.nextKind % FLOWERS.length];
     return [
       { id: 'hand', icon: '✋', label: 'Touch', kind: 'mode' },
-      { id: 'plant', icon: next.icon, label: next.name, kind: 'mode' },
-      { id: 'water', icon: '🚿', label: 'Water', kind: 'action' },
-      { id: 'sugar', icon: '🧃', label: 'Sugar', kind: 'action', disabled: m.s.feeder > BEE.maxFeeder - 1 },
+      { id: 'plant', icon: next.icon, label: next.name, kind: 'drag' },
+      { id: 'water', icon: '🚿', label: 'Water', kind: 'drag' },
+      { id: 'sugar', icon: '🧃', label: 'Sugar', kind: 'drag', disabled: m.s.feeder > BEE.maxFeeder - 1 },
       { id: 'harvest', icon: '🍯', label: 'Honey', kind: 'action' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
@@ -183,14 +175,6 @@ export class HiveHabitat implements Habitat {
     const m = this.model;
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     switch (id) {
-      case 'water':
-        if (!m.waterAll()) toast('There are no flowers to water yet.');
-        else toast('Watered flowers make nectar faster and last longer.');
-        break;
-      case 'sugar':
-        if (!m.fillFeeder()) toast('The feeder is full.');
-        else toast('Sugar water helps on a bad day, but flowers are better.');
-        break;
       case 'harvest':
         if (m.harvest()) break;
         toast('The bees need that honey for themselves. Wait until there is plenty!');
@@ -200,8 +184,46 @@ export class HiveHabitat implements Habitat {
         break;
       default:
         this.tool = id;
-        if (id === 'plant') toast('Tap the garden to plant. Wilted flowers can be replaced.');
     }
+  }
+
+  /** The flower bed slot nearest x. */
+  private slotAt(x: number): number {
+    let slot = 0;
+    for (let i = 1; i < SLOT_X.length; i++) if (Math.abs(SLOT_X[i] - x) < Math.abs(SLOT_X[slot] - x)) slot = i;
+    return slot;
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    const m = this.model;
+    const toast = (text: string) => this.events.push({ type: 'toast', text });
+    if (id === 'plant') {
+      if (at && at.x < HIVE.right + 6) {
+        toast('Plant flowers out in the garden!');
+        return;
+      }
+      // tapped: the first empty or wilted spot in the bed
+      const free = SLOT_X.findIndex((_, i) => !m.alive(i));
+      if (!at && free < 0) {
+        toast('Every spot has a fresh flower. Wait until one wilts.');
+        return;
+      }
+      if (m.plant(at ? at.x : SLOT_X[free]) === 'busy') toast('That flower is still fresh. Try an empty spot.');
+    } else if (id === 'water') {
+      if (!m.waterAll()) toast('There are no flowers to water yet.');
+      else toast('Watered flowers make nectar faster and last longer.');
+    } else if (id === 'sugar') {
+      if (!m.fillFeeder()) toast('The feeder is full.');
+      else toast('Sugar water helps on a bad day, but flowers are better.');
+    }
+  }
+
+  dropHint(id: string, x: number, _y?: number): DropHint {
+    if (id === 'sugar') return { x: FEEDER.x, y: GROUND - 10, ok: true };
+    if (id === 'plant' && x < HIVE.right + 6) return { x, y: GROUND, ok: false };
+    const slot = this.slotAt(x);
+    // a new flower only goes in a spot that is empty or wilted; water reaches the whole bed
+    return { x: SLOT_X[slot], y: GROUND - 1, ok: id !== 'plant' || !this.model.alive(slot) };
   }
 
   stats(): Stat[] {

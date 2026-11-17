@@ -2,7 +2,7 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawSpawn, drawTadpole, FROG_SPRITES } from './art';
 import { aquatic, bankY, DEV, hops, PERCHES, POND, Pond, PONDCFG, newPondState, stageOf } from './model';
 
@@ -157,12 +157,6 @@ export class PondHabitat implements Habitat {
       return;
     }
     switch (this.tool) {
-      case 'flakes':
-        if (kind === 'down') m.dropFlakes(x);
-        break;
-      case 'lettuce':
-        if (kind === 'down' && !m.dropLettuce(x)) this.events.push({ type: 'toast', text: 'There is plenty of lettuce floating already.' });
-        break;
       case 'net':
         if (m.net(x, y) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
         break;
@@ -175,9 +169,9 @@ export class PondHabitat implements Habitat {
   tools(): Tool[] {
     return [
       { id: 'hand', icon: '✋', label: 'Touch', kind: 'mode' },
-      { id: 'flakes', icon: '🟡', label: 'Flakes', kind: 'mode' },
-      { id: 'lettuce', icon: '🥬', label: 'Lettuce', kind: 'mode' },
-      { id: 'flies', icon: '🪰', label: 'Flies', kind: 'action' },
+      { id: 'flakes', icon: '🟡', label: 'Flakes', kind: 'drag' },
+      { id: 'lettuce', icon: '🥬', label: 'Lettuce', kind: 'drag' },
+      { id: 'flies', icon: '🪰', label: 'Flies', kind: 'drag' },
       { id: 'net', icon: '🥅', label: 'Net', kind: 'mode' },
       { id: 'torch', icon: '🔦', label: 'Torch', kind: 'toggle', on: this.model.s.torch },
     ];
@@ -186,11 +180,28 @@ export class PondHabitat implements Habitat {
   useTool(id: string): void {
     const m = this.model;
     if (id === 'torch') m.s.torch = !m.s.torch;
-    else if (id === 'flies') {
+    else this.tool = id;
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    const m = this.model;
+    const toast = (text: string) => this.events.push({ type: 'toast', text });
+    // tapped: drop it in toward the middle of the water
+    const x = at ? at.x : 90 + Math.random() * 100;
+    if (id === 'flakes') m.dropFlakes(x);
+    else if (id === 'lettuce') {
+      if (!m.dropLettuce(x)) toast('There is plenty of lettuce floating already.');
+    } else if (id === 'flies') {
       const c = m.counts();
-      if (!m.releaseFlies()) this.events.push({ type: 'toast', text: 'There are lots of flies buzzing about already.' });
-      else if (!c.frogs && !c.froglets) this.events.push({ type: 'toast', text: 'Bzzz! Only frogs catch flies. Tadpoles like flakes and lettuce.' });
-    } else this.tool = id;
+      if (!m.releaseFlies()) toast('There are lots of flies buzzing about already.');
+      else if (!c.frogs && !c.froglets) toast('Bzzz! Only frogs catch flies. Tadpoles like flakes and lettuce.');
+    }
+  }
+
+  dropHint(id: string, x: number): DropHint {
+    const hx = Math.max(POND.left + 10, Math.min(POND.right - 10, x));
+    // flies are let go into the air; food lands on the water
+    return { x: hx, y: id === 'flies' ? POND.surface - 14 : POND.surface, ok: true };
   }
 
   stats(): Stat[] {

@@ -2,7 +2,7 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawAxolotl } from './art';
 import { AXO, Axolotl, newAxoState, TANK, type DecorId, type Morph } from './model';
 
@@ -163,16 +163,6 @@ export class AxolotlHabitat implements Habitat {
       return;
     }
     switch (this.tool) {
-      case 'pellet':
-      case 'worm':
-        if (kind === 'down') {
-          const full = !m.willEat();
-          if (m.dropFood(x, this.tool) && full && this.fullToast <= 0) {
-            this.fullToast = 8;
-            this.events.push({ type: 'toast', text: `${m.s.name || 'Your axolotl'} is full. Leftover food makes the water dirty!` });
-          }
-        }
-        break;
       case 'siphon':
         if (m.siphon(x, y) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
         break;
@@ -193,8 +183,8 @@ export class AxolotlHabitat implements Habitat {
     const m = this.model;
     const list: Tool[] = [
       { id: 'hand', icon: '✋', label: 'Pet', kind: 'mode' },
-      { id: 'pellet', icon: '🟤', label: 'Pellet', kind: 'mode' },
-      { id: 'worm', icon: '🪱', label: 'Worm', kind: 'mode' },
+      { id: 'pellet', icon: '🟤', label: 'Pellet', kind: 'drag' },
+      { id: 'worm', icon: '🪱', label: 'Worm', kind: 'drag' },
       { id: 'siphon', icon: '🧹', label: 'Clean', kind: 'mode' },
       { id: 'water', icon: '💧', label: 'New water', kind: 'action', disabled: !m.canChangeWater() },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
@@ -220,6 +210,23 @@ export class AxolotlHabitat implements Habitat {
     } else if (id === 'lamp') m.s.lamp = !m.s.lamp;
     else if (id.startsWith('decor:')) m.toggleDecor(id.slice(6) as DecorId);
     else this.tool = id;
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
+    if (id !== 'pellet' && id !== 'worm') return;
+    const m = this.model;
+    const full = !m.willEat();
+    // tapped: drop it in just above the axolotl
+    const x = at ? at.x : m.s.x + (Math.random() - 0.5) * 20;
+    if (m.dropFood(x, id) && full && this.fullToast <= 0) {
+      this.fullToast = 8;
+      this.events.push({ type: 'toast', text: `${m.s.name || 'Your axolotl'} is full. Leftover food makes the water dirty!` });
+    }
+  }
+
+  dropHint(_id: string, x: number): DropHint {
+    // food goes in at the surface and sinks
+    return { x: Math.max(TANK.left + 10, Math.min(TANK.right - 10, x)), y: TANK.surface + 4, ok: true };
   }
 
   stats(): Stat[] {

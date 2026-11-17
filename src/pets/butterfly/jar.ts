@@ -2,7 +2,7 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawButterfly, drawCaterpillar, drawChrysalis, drawFlower, drawLeaf, drawOrange } from './art';
 import {
   BFLY, FLOWER_X, HANG, JAR, Jar, ORANGE_X, SLOTS, STEM_TOP, newJarState, stemX,
@@ -170,9 +170,9 @@ export class ButterflyHabitat implements Habitat {
   tools(): Tool[] {
     return [
       { id: 'hand', icon: '✋', label: 'Touch', kind: 'mode' },
-      { id: 'leaf', icon: '🍃', label: 'Leaf', kind: 'action' },
-      { id: 'flower', icon: '🌼', label: 'Flower', kind: 'action' },
-      { id: 'orange', icon: '🍊', label: 'Orange', kind: 'action' },
+      { id: 'leaf', icon: '🍃', label: 'Leaf', kind: 'drag' },
+      { id: 'flower', icon: '🌼', label: 'Flower', kind: 'drag' },
+      { id: 'orange', icon: '🍊', label: 'Orange', kind: 'drag' },
       { id: 'mist', icon: '💦', label: 'Mist', kind: 'action' },
       { id: 'clean', icon: '🧹', label: 'Tidy', kind: 'mode' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: this.model.s.lamp },
@@ -181,18 +181,7 @@ export class ButterflyHabitat implements Habitat {
 
   useTool(id: string): void {
     const m = this.model;
-    const toast = (text: string) => this.events.push({ type: 'toast', text });
     switch (id) {
-      case 'leaf':
-        if (!m.addLeaf()) toast('The plant is full of fresh leaves already!');
-        break;
-      case 'flower':
-        if (!m.addFlower()) toast('There is no room for more flowers.');
-        else if (!m.count('fly')) toast('Pretty! Butterflies drink from flowers. Caterpillars only eat leaves.');
-        break;
-      case 'orange':
-        if (!m.addOrange()) toast('There is still plenty of orange left.');
-        break;
       case 'mist':
         m.mist();
         break;
@@ -202,6 +191,37 @@ export class ButterflyHabitat implements Habitat {
       default:
         this.tool = id;
     }
+  }
+
+  drop(id: string, _at?: { x: number; y: number } | null): void {
+    const m = this.model;
+    const toast = (text: string) => this.events.push({ type: 'toast', text });
+    // each of these has its own place in the jar, wherever it is let go
+    if (id === 'leaf') {
+      if (!m.addLeaf()) toast('The plant is full of fresh leaves already!');
+    } else if (id === 'flower') {
+      if (!m.addFlower()) toast('There is no room for more flowers.');
+      else if (!m.count('fly')) toast('Pretty! Butterflies drink from flowers. Caterpillars only eat leaves.');
+    } else if (id === 'orange') {
+      if (!m.addOrange()) toast('There is still plenty of orange left.');
+    }
+  }
+
+  dropHint(id: string): DropHint | null {
+    const m = this.model, s = m.s;
+    if (id === 'leaf') {
+      let i = s.leaves.findIndex((l) => !l);
+      if (i < 0) i = s.leaves.findIndex((_, k) => !m.leafFresh(k));
+      const sl = SLOTS[Math.max(0, i)];
+      return { x: sl.tip.x + sl.dir * 10, y: sl.tip.y, ok: i >= 0 };
+    }
+    if (id === 'flower') {
+      let i = s.flowers.findIndex((f) => !f);
+      if (i < 0) i = s.flowers.findIndex((_, k) => !m.flowerFresh(k));
+      return { x: FLOWER_X[Math.max(0, i)], y: JAR.floor - 20, ok: i >= 0 };
+    }
+    if (id === 'orange') return { x: ORANGE_X, y: JAR.floor - 4, ok: !(m.orangeFresh() && s.orange!.left > 0.5) };
+    return null;
   }
 
   stats(): Stat[] {

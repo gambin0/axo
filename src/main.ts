@@ -13,7 +13,7 @@ import { CrabHabitat } from './pets/crab/tank';
 import { CageHabitat } from './pets/hamster/cage';
 import { PondHabitat } from './pets/pond/pond';
 import { TerrariumHabitat } from './pets/snail/terrarium';
-import type { Habitat, PetId } from './pets/types';
+import type { DropHint, Habitat, PetId, Tool } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
 import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
 
@@ -142,6 +142,10 @@ function open(id: PetId | null): void {
   habitatScreen.hidden = id === null;
   toolsKey = '';
   if (id) {
+    if (!toldDrag) {
+      toldDrag = true;
+      toasts.show('Drag food from the buttons into the habitat, or just tap a button to put it in its usual place.');
+    }
     title.textContent = habitats[id].name;
     resize();
   }
@@ -230,11 +234,16 @@ function refreshUi(): void {
           class: 'tool',
           type: 'button',
           disabled: t.disabled,
-          'aria-pressed': String(t.kind === 'mode' ? h.tool === t.id : !!t.on),
-          'aria-label': t.label,
-          onclick: () => {
+          'data-drag': t.kind === 'drag' ? '' : undefined,
+          'aria-pressed': t.kind === 'drag' ? undefined : String(t.kind === 'mode' ? h.tool === t.id : !!t.on),
+          'aria-label': t.kind === 'drag' ? `${t.label}: drag it in, or tap to put it in its usual place` : t.label,
+          onpointerdown: t.kind === 'drag' ? (ev: PointerEvent) => startDrag(t, ev) : undefined,
+          onclick: (ev: MouseEvent) => {
             sound.unlock();
-            h.useTool(t.id);
+            // a drag tool's taps and drags are handled by its pointer events; a keyboard press puts it in its usual place
+            if (t.kind === 'drag') {
+              if (ev.detail === 0) h.drop(t.id, null);
+            } else h.useTool(t.id);
             refreshUi();
           },
         },
@@ -243,6 +252,77 @@ function refreshUi(): void {
       ),
     ),
   );
+}
+
+// ---- dragging things in from the toolbar ----------------------------------
+
+interface Drag {
+  id: string;
+  sx: number;
+  sy: number;
+  moved: boolean;
+  ghost: HTMLElement;
+  /** The point in the habitat under the finger, or null when it is off the habitat. */
+  at: { x: number; y: number } | null;
+  hint: DropHint | null;
+}
+let drag: Drag | null = null;
+let toldDrag = false;
+
+function startDrag(t: Tool, ev: PointerEvent): void {
+  if (!active || t.disabled || ev.button > 0) return;
+  sound.unlock();
+  drag = { id: t.id, sx: ev.clientX, sy: ev.clientY, moved: false, ghost: el('div', { class: 'ghost', 'aria-hidden': 'true' }, t.icon), at: null, hint: null };
+  ev.preventDefault();
+}
+
+window.addEventListener('pointermove', (ev) => {
+  if (!drag || !active) return;
+  if (!drag.moved && Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) > 10) {
+    drag.moved = true;
+    document.body.append(drag.ghost);
+  }
+  if (!drag.moved) return;
+  drag.ghost.style.left = `${ev.clientX}px`;
+  drag.ghost.style.top = `${ev.clientY}px`;
+  const r = view.getBoundingClientRect();
+  const over = ev.clientX >= r.left && ev.clientX < r.right && ev.clientY >= r.top && ev.clientY < r.bottom;
+  drag.at = over ? (([x, y]) => ({ x, y }))(toArt(ev)) : null;
+  drag.hint = drag.at ? habitats[active].dropHint(drag.id, drag.at.x, drag.at.y) : null;
+  drag.ghost.classList.toggle('over', over);
+  drag.ghost.classList.toggle('no', !!drag.hint && !drag.hint.ok);
+});
+
+function endDrag(cancel: boolean): void {
+  const d = drag;
+  drag = null;
+  if (!d) return;
+  d.ghost.remove();
+  if (!active || cancel) return;
+  const h = habitats[active];
+  if (!d.moved) h.drop(d.id, null);
+  else if (d.at) h.drop(d.id, d.at);
+  else return; // let go off the habitat: nothing happens
+  refreshUi();
+}
+window.addEventListener('pointerup', () => endDrag(false));
+window.addEventListener('pointercancel', () => endDrag(true));
+
+/** A pulsing target on the spot where the dragged thing would land: white when it can go there, red when not. */
+function drawDropHint(sf: Surface, hint: DropHint, time: number): void {
+  const c = hint.ok ? 0xffffff : 0xff5a4a;
+  const r = 8 + Math.sin(time * 7) * 1.2;
+  for (let a = 0; a < Math.PI * 2; a += 0.05) {
+    if (Math.floor((a + time) * 3) % 2) continue;
+    sf.blend(Math.round(hint.x + Math.cos(a) * r), Math.round(hint.y + Math.sin(a) * r * 0.55), c, 0.9);
+  }
+  // a little arrow pointing down at it
+  const top = Math.round(hint.y - 16 + Math.sin(time * 7) * 1.5);
+  for (let k = 0; k < 6; k++) sf.blend(Math.round(hint.x), top + k, c, 0.9);
+  for (let k = 1; k <= 3; k++) {
+    sf.blend(Math.round(hint.x) - k, top + 5 - k, c, 0.9);
+    sf.blend(Math.round(hint.x) + k, top + 5 - k, c, 0.9);
+  }
 }
 
 // ---- dialogs -------------------------------------------------------------
@@ -361,6 +441,7 @@ function render(time: number): void {
   const env = envAt(clock.hour());
   if (active) {
     habitats[active].render(surface, time, env);
+    if (drag?.hint) drawDropHint(surface, drag.hint, time);
     present(view, surface);
     return;
   }

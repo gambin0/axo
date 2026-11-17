@@ -24,8 +24,7 @@ test('aquarium renders every morph, day and night', () => {
       s.wastes.push({ x: 100, y: 151 }, { x: 180, y: 151 });
     }
     const env = envAt(i === 3 ? 23 : 12);
-    h.tool = 'worm';
-    h.pointer('down', 120, 40);
+    h.drop('worm', { x: 120, y: 40 });
     for (let n = 0; n < 60 * 6; n++) h.update(1 / 60, 1 / 60, env);
     h.render(sf, 6, env);
     expect(sf.data.some((v, j) => j % 4 !== 3 && v > 0)).toBe(true);

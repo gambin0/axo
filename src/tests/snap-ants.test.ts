@@ -26,10 +26,8 @@ test('ant farm renders at every stage', () => {
     s.foodStore = 30;
     s.redLight = c.red;
     const env = envAt(c.hour);
-    h.tool = 'fruit';
-    h.pointer('down', 90, 10);
-    h.tool = 'bug';
-    h.pointer('down', 230, 10);
+    h.drop('fruit', { x: 90, y: 10 });
+    h.drop('bug', { x: 230, y: 10 });
     for (let n = 0; n < 60 * 25; n++) h.update(1 / 60, 1 / 60, env);
     h.render(sf, 25, env);
     expect(h.model.ants.length).toBe(Math.min(c.workers, ANTS.maxShown));

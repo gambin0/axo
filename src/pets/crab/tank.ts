@@ -3,9 +3,9 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawCrab, drawMound, drawShell, shellRadius } from './art';
-import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, TANK, type Pt, type Shell } from './model';
+import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, SPARE_X, TANK, type Pt, type Shell } from './model';
 
 const SAND = [0xe8d6a8, 0xd2bc8a, 0xb89f70, 0x967f58];
 const DAMP = [0xb09670, 0x96805c, 0x7e6a4c, 0x66543c];
@@ -152,10 +152,6 @@ export class CrabHabitat implements Habitat {
       m.finger = null;
       return;
     }
-    if (this.tool === 'chips') {
-      if (kind === 'down') m.dropChip(x);
-      return;
-    }
     if (this.tool === 'tidy') {
       if (m.tidy(x) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
@@ -170,17 +166,31 @@ export class CrabHabitat implements Habitat {
     const m = this.model;
     return [
       { id: 'hand', icon: '✋', label: 'Touch', kind: 'mode' },
-      { id: 'food', icon: '🍓', label: 'Food', kind: 'action', disabled: m.s.food > 0.85 },
-      { id: 'water', icon: '🥤', label: 'Water', kind: 'action', disabled: m.s.fresh > 0.85 && m.s.salt > 0.85 },
+      { id: 'food', icon: '🍓', label: 'Food', kind: 'drag', disabled: m.s.food > 0.85 },
+      { id: 'water', icon: '🥤', label: 'Water', kind: 'drag', disabled: m.s.fresh > 0.85 && m.s.salt > 0.85 },
       { id: 'mist', icon: '💦', label: 'Mist', kind: 'action' },
-      { id: 'shell', icon: '🐚', label: 'Shell', kind: 'action' },
-      { id: 'chips', icon: '🥔', label: 'Crisps', kind: 'mode' },
+      { id: 'shell', icon: '🐚', label: 'Shell', kind: 'drag' },
+      { id: 'chips', icon: '🥔', label: 'Crisps', kind: 'drag' },
       { id: 'tidy', icon: '🧹', label: 'Tidy', kind: 'mode' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
   }
 
   useTool(id: string): void {
+    const m = this.model;
+    switch (id) {
+      case 'mist':
+        m.mist();
+        break;
+      case 'lamp':
+        m.s.lamp = !m.s.lamp;
+        break;
+      default:
+        this.tool = id;
+    }
+  }
+
+  drop(id: string, at: { x: number; y: number } | null): void {
     const m = this.model;
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     switch (id) {
@@ -190,9 +200,6 @@ export class CrabHabitat implements Habitat {
       case 'water':
         if (!m.fillWater()) toast('Both water dishes are full.');
         break;
-      case 'mist':
-        m.mist();
-        break;
       case 'shell': {
         const r = m.offerShell();
         if (r === 'full') toast('The shell pile is full. Use 🧹 Tidy to clear the ones it did not like.');
@@ -200,13 +207,26 @@ export class CrabHabitat implements Habitat {
         else if (m.cramped()) toast('A new shell! Will it be a better fit?');
         break;
       }
-      case 'lamp':
-        m.s.lamp = !m.s.lamp;
+      case 'chips':
+        if (m.dropChip(at ? at.x : m.s.x + m.s.facing * 20)) toast('Crisps are salty and bad for hermit crabs. Watch what it does!');
         break;
-      default:
-        this.tool = id;
-        if (id === 'chips') toast('Crisps are salty and bad for hermit crabs. Watch what it does!');
     }
+  }
+
+  dropHint(id: string, x: number): DropHint {
+    // food and water go in their dishes, shells on the shell pile, crisps where they are dropped
+    if (id === 'food') return { x: DISH.food, y: sandY(DISH.food) - 2, ok: true };
+    if (id === 'water') {
+      const d = Math.abs(x - DISH.fresh) < Math.abs(x - DISH.salt) ? DISH.fresh : DISH.salt;
+      return { x: d, y: sandY(d) - 2, ok: true };
+    }
+    if (id === 'shell') {
+      const taken = new Set(this.model.s.spare.map((sh) => sh.x));
+      const px = SPARE_X.find((p) => !taken.has(p));
+      return { x: px ?? SPARE_X[0], y: sandY(px ?? SPARE_X[0]) - 4, ok: px !== undefined };
+    }
+    const hx = Math.max(TANK.minX, Math.min(TANK.maxX, Math.round(x)));
+    return { x: hx, y: sandY(hx) - 1, ok: true };
   }
 
   stats(): Stat[] {

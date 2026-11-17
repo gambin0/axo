@@ -46,9 +46,9 @@ test('butterfly jar renders every stage', () => {
   // butterflies of every species, with flowers and an orange
   h = new ButterflyHabitat(null, 7);
   s = h.model.s;
-  h.useTool('flower');
-  h.useTool('flower');
-  h.useTool('orange');
+  h.drop('flower', null);
+  h.drop('flower', null);
+  h.drop('orange', null);
   s.bugs = SPECIES.map((species, i) => ({
     ...s.bugs[0], id: i + 1, species, stage: 'fly' as const, t: 0, emerge: 1, fullness: 80, state: 'perch', timer: 99,
     x: 60 + i * 62, y: 60 + (i % 2) * 40, facing: (i % 2 ? -1 : 1) as 1 | -1,
@@ -80,11 +80,9 @@ test('pond renders every stage', () => {
       f.y = PERCHES[f.perch].y;
     }
   });
-  h.tool = 'flakes';
-  h.pointer('down', 120, 60);
-  h.tool = 'lettuce';
-  h.pointer('down', 180, 60);
-  h.useTool('flies');
+  h.drop('flakes', { x: 120, y: 60 });
+  h.drop('lettuce', { x: 180, y: 60 });
+  h.drop('flies', null);
   s.debris.push({ x: 100, y: 49, kind: 'leaf' });
   for (let n = 0; n < 30; n++) h.update(1 / 60, 1 / 60, DAY);
   h.render(sf, 2, DAY);
