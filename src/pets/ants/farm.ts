@@ -32,7 +32,7 @@ const FOODS: { id: AntFoodKind; icon: string; label: string }[] = [
   { id: 'crumb', icon: '🍞', label: 'Crumb' },
   { id: 'fruit', icon: '🍎', label: 'Fruit' },
   { id: 'bug', icon: '🪲', label: 'Bug' },
-  { id: 'chocolate', icon: '🍫', label: 'Choc' },
+  { id: 'chocolate', icon: '🍫', label: 'Chocolate' },
 ];
 
 export class AntHabitat implements Habitat {

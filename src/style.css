@@ -472,6 +472,30 @@ select {
   background: var(--warn);
   color: #10202a;
 }
+/* a letter on its own: lit while spelled, popped up while held to hear it */
+.l {
+  -webkit-touch-callout: none;
+  border-radius: 4px;
+}
+.l.said {
+  background: var(--warn);
+  color: #10202a;
+}
+.l.held {
+  display: inline-block;
+  transform: scale(1.7);
+  background: var(--accent);
+  color: #2a1c00;
+  padding: 0 2px;
+  transition: transform 0.12s;
+}
+/* the first letter of something to give a pet, big enough to learn */
+.tool .lbl .initial {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 900;
+  color: var(--accent);
+}
 .renames {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
@@ -485,4 +509,12 @@ select {
 .line select {
   min-width: 0;
   max-width: 70%;
+}
+/* the header clips anything that grows too far */
+#habitat header .l.held {
+  transform: scale(1.25);
+}
+.tool .lbl .l.held {
+  color: #2a1c00;
+  transform: scale(1.4);
 }

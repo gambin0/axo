@@ -3,6 +3,7 @@ import { elapsedSeconds, runCatchup } from './core/catchup';
 import { startLoop } from './core/loop';
 import { freshSave, loadSave, SAVE_VERSION, writeSave, type SaveData } from './core/save';
 import { envAt, realClock } from './core/time';
+import { isLetter, letterName, letterSpeech, spellOut } from './core/letters';
 import { englishVoices, onVoicesChanged, Speaker, wordSpans } from './core/speech';
 import { BUILD, startUpdater } from './core/update';
 import { AntHabitat } from './pets/ants/farm';
@@ -135,8 +136,20 @@ home.append(cardGrid, el('button', { class: 'pill', type: 'button', onclick: () 
 
 const view = el('canvas', { id: 'view', width: VIEW_W, height: VIEW_H });
 const stage = el('div', { id: 'stage' }, view);
-const title = el('h2', { onpointerdown: () => (unlock(), active && hear(petIntro(active))) });
+const title = el('h2', { onpointerdown: () => (unlock(), active && sayName(active)) });
 const petIntro = (id: PetId) => `${habitats[id].name} the ${PETS[id].kind}`;
+let titleMarks: HTMLElement[] = [];
+function showTitle(id: PetId): void {
+  const r = readable(habitats[id].name);
+  title.replaceChildren(r.node);
+  titleMarks = r.marks;
+}
+/** Spell the pet's name out letter by letter, each lighting up, then say it: "em, oh, see, aitch, eye. Mochi the axolotl!" */
+function sayName(id: PetId): void {
+  const { spoken } = spellOut(habitats[id].name, speaker.lang);
+  const letters = [...title.querySelectorAll<HTMLElement>('.l')];
+  hear(`${spoken} ${petIntro(id)}!`, [...letters, ...titleMarks]);
+}
 const badge = el('span', { class: 'badge', onpointerdown: () => (unlock(), hear(badge.textContent ?? '')) });
 const statsBox = el('div', { id: 'stats' });
 const toolsBox = el('div', { id: 'tools', role: 'toolbar', 'aria-label': 'Tools' });
@@ -157,12 +170,12 @@ function open(id: PetId | null): void {
   habitatScreen.hidden = id === null;
   toolsKey = '';
   if (id) {
-    hear(petIntro(id));
+    showTitle(id);
+    sayName(id);
     if (!toldDrag) {
       toldDrag = true;
       toasts.show('Drag food from the buttons into the habitat, or just tap a button to put it in its usual place.');
     }
-    title.textContent = habitats[id].name;
     resize();
   }
   refreshUi();
@@ -247,6 +260,13 @@ function refreshUi(): void {
   toolsBox.replaceChildren(
     ...tools.map((t) => {
       const label = readable(t.label);
+      // things to give the pet show their first letter big, and say it: "see is for Carrot"
+      const initial = t.kind === 'drag' ? label.node.querySelector<HTMLElement>('.l') : null;
+      initial?.classList.add('initial');
+      const speak = () =>
+        initial && isLetter(initial.textContent ?? '')
+          ? hear(`${letterName(initial.textContent!, speaker.lang)} is for ${t.label}`, [initial, el('span', {}), el('span', {}), ...label.marks])
+          : hear(t.label, label.marks);
       return el(
         'button',
         {
@@ -258,7 +278,7 @@ function refreshUi(): void {
           'aria-label': t.kind === 'drag' ? `${t.label}: drag it in, or tap to put it in its usual place` : t.label,
           onpointerdown: (ev: PointerEvent) => {
             unlock();
-            if (!t.disabled) hear(t.label, label.marks);
+            if (!t.disabled) speak();
             if (t.kind === 'drag') startDrag(t, ev);
           },
           onclick: (ev: MouseEvent) => {
@@ -347,6 +367,42 @@ function drawDropHint(sf: Surface, hint: DropHint, time: number): void {
     sf.blend(Math.round(hint.x) + k, top + 5 - k, c, 0.9);
   }
 }
+
+// ---- letters: hold any letter to hear it -----------------------------------
+
+let hold: { timer: number; x: number; y: number } | null = null;
+function cancelHold(): void {
+  if (hold) clearTimeout(hold.timer);
+  hold = null;
+}
+/** A press that turned into holding a letter must not also press the button the letter is on. */
+function swallowNextClick(): void {
+  const swallow = (e: Event) => (e.stopPropagation(), e.preventDefault());
+  window.addEventListener('click', swallow, { capture: true, once: true });
+  window.addEventListener('pointerup', () => setTimeout(() => window.removeEventListener('click', swallow, true), 300), { once: true });
+}
+function sayLetter(l: HTMLElement): void {
+  endDrag(true);
+  swallowNextClick();
+  const ch = l.textContent ?? '';
+  const word = l.closest('.w')?.textContent ?? '';
+  l.classList.add('held');
+  speaker.sayNow(letterSpeech(ch, word, speaker.lang), [], () => l.classList.remove('held'));
+}
+document.addEventListener(
+  'pointerdown',
+  (ev) => {
+    cancelHold();
+    const l = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.l') : null;
+    if (!l || ev.button > 0) return;
+    unlock();
+    hold = { x: ev.clientX, y: ev.clientY, timer: window.setTimeout(() => (hold = null, sayLetter(l)), 450) };
+  },
+  true,
+);
+document.addEventListener('pointermove', (ev) => hold && Math.hypot(ev.clientX - hold.x, ev.clientY - hold.y) > 10 && cancelHold(), true);
+document.addEventListener('pointerup', cancelHold, true);
+document.addEventListener('pointercancel', cancelHold, true);
 
 // ---- dialogs -------------------------------------------------------------
 
@@ -446,7 +502,7 @@ function renameDialog(id: PetId): void {
     dlg.close();
     if (!name || name === old) return;
     h.name = name;
-    if (active === id) title.textContent = name;
+    if (active === id) showTitle(id);
     persist();
     refreshUi();
     toasts.show(`${old} is now called ${name}!`);

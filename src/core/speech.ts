@@ -80,10 +80,10 @@ export class Speaker {
   }
 
   /** Say this right now, cutting off anything else (used when a child taps a word). */
-  sayNow(text: string, marks: HTMLElement[] = []): void {
-    if (!this.ready(text)) return;
+  sayNow(text: string, marks: HTMLElement[] = [], done?: () => void): void {
+    if (!this.ready(text)) return done?.();
     this.stop();
-    this.queue.unshift({ text: spokenText(text), marks });
+    this.queue.unshift({ text: spokenText(text), marks, done });
     this.next();
   }
 
@@ -99,6 +99,12 @@ export class Speaker {
     for (const j of this.queue) j.done?.();
     this.queue = [];
     this.synth?.cancel();
+  }
+
+  /** The language being spoken, e.g. "en-GB", for choices like "zed" or "zee". */
+  get lang(): string {
+    const voice = this.voiceName && this.synth ? this.synth.getVoices().find((v) => v.name === this.voiceName) : undefined;
+    return voice?.lang ?? deviceEnglish();
   }
 
   private ready(text: string): boolean {
@@ -204,9 +210,26 @@ export function wordSpans(text: string): { nodes: (HTMLElement | string)[]; mark
     }
     const span = document.createElement('span');
     span.className = 'w';
-    span.textContent = p;
+    span.append(...letterSpans(p));
     nodes.push(span);
     marks.push(span);
   }
   return { nodes, marks };
+}
+
+/** A word's letters, each in its own span so a single letter can be held to hear it. */
+export function letterSpans(word: string): (HTMLElement | string)[] {
+  const out: (HTMLElement | string)[] = [];
+  for (const ch of word) {
+    if (!/[a-z]/i.test(ch)) {
+      if (typeof out[out.length - 1] === 'string') out[out.length - 1] += ch;
+      else out.push(ch);
+      continue;
+    }
+    const l = document.createElement('span');
+    l.className = 'l';
+    l.textContent = ch;
+    out.push(l);
+  }
+  return out;
 }
