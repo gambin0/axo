@@ -24,6 +24,10 @@ export class PondHabitat implements Habitat {
   private sky: Sky = 'day';
   private events: UiEvent[] = [];
   private said = new Set<string>();
+  /** Where the net is while it is held in the pond, and the colours of what it has scooped up. */
+  private netAt: { x: number; y: number } | null = null;
+  private caught: number[] = [];
+  private night = false;
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Pond.load(saved, seed) : new Pond(newPondState(seed));
@@ -36,19 +40,27 @@ export class PondHabitat implements Habitat {
     this.model.s.name = v;
   }
 
+  private toast(text: string): void {
+    this.events.push({ type: 'toast', text });
+  }
+  /** A tip shown only the first time it applies this session. */
+  private once(key: string, text: string): void {
+    if (this.said.has(key)) return;
+    this.said.add(key);
+    this.toast(text);
+  }
+
   // ---- simulation --------------------------------------------------------
 
   update(dt: number, slowDt: number, env: Env): void {
     const m = this.model;
     m.update(dt, slowDt, env);
-    const toast = (text: string) => this.events.push({ type: 'toast', text });
+    this.night = env.night;
+    const toast = (text: string) => this.toast(text);
     const sound = (name: Extract<UiEvent, { type: 'sound' }>['name']) => this.events.push({ type: 'sound', name });
-    /** Explain each milestone the first time it happens this session. */
-    const once = (key: string, text: string) => {
-      if (this.said.has(key)) return;
-      this.said.add(key);
-      toast(text);
-    };
+    const once = (key: string, text: string) => this.once(key, text);
+    if (m.s.cleanliness < PONDCFG.muckyBelow)
+      once('mucky', 'The water is getting mucky! Pick the 🥅 net and sweep it over the leaves and old food to scoop them out.');
     for (const fx of m.fx) {
       switch (fx.kind) {
         case 'hatch':
@@ -155,12 +167,23 @@ export class PondHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       m.finger = null;
+      this.netAt = null;
+      this.caught = [];
       return;
     }
     switch (this.tool) {
-      case 'net':
-        if (m.net(x, y) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
+      case 'net': {
+        // the net stays in the water: it can't be lifted above the surface or pushed into the bank
+        const nx = clamp(x, POND.left + 4, 228), ny = clamp(y, POND.surface + 2, POND.bottom - 2);
+        const last = this.netAt;
+        this.netAt = { x: nx, y: ny };
+        const kinds = m.s.debris.filter((d) => Math.abs(d.x - nx) <= 10 && Math.abs(d.y - ny) <= 10).map((d) => d.kind);
+        const n = m.net(nx, ny);
+        for (const k of kinds) if (this.caught.length < 8) this.caught.push(k === 'leaf' ? 0xb07a3a : 0x6a6a44);
+        if (kind === 'down' || (last && Math.hypot(last.x - nx, last.y - ny) > 6 && Math.random() < 0.3)) this.particles.spawn('ripple', nx, POND.surface + 1);
+        if (n && !m.s.debris.length) this.toast(m.s.cleanliness < PONDCFG.muckyBelow ? 'All scooped out! The water will clear up by itself now.' : 'All scooped out! 🌟');
         break;
+      }
       default:
         if (kind === 'down') m.tap(x, y);
         else if (y > POND.surface + 4 && x < 232) m.finger = { x, y };
@@ -180,8 +203,15 @@ export class PondHabitat implements Habitat {
 
   useTool(id: string): void {
     const m = this.model;
-    if (id === 'torch') m.s.torch = !m.s.torch;
-    else this.tool = id;
+    if (id === 'torch') {
+      m.s.torch = !m.s.torch;
+      if (!this.night) this.once('torch-day', 'The torch is for night-time. After dark it lights up the pond and wakes everyone up.');
+      else this.toast(m.s.torch ? 'Torch on! The light wakes the tadpoles and frogs up.' : 'Torch off. Night-night, pond!');
+      return;
+    }
+    this.tool = id;
+    if (id === 'net')
+      this.once('net', m.s.debris.length ? 'Sweep the net over the leaves and old food to scoop them out.' : 'The pond is clean! Leaves fall in every few hours, so come back with the net later.');
   }
 
   drop(id: string, at: { x: number; y: number } | null): void {
@@ -360,6 +390,43 @@ export class PondHabitat implements Habitat {
     }
   }
 
+  /** A pond net held at (x, y): a mesh bag hanging from a hoop, on a long handle reaching up out of the water. */
+  private drawNet(sf: Surface, x: number, y: number, time: number): void {
+    const cx = Math.round(x), cy = Math.round(y);
+    const R = 11, D = 11;
+    const sway = (dy: number) => Math.round(Math.sin(time * 4) * 1.2 * (dy / D));
+    // the back of the hoop, behind the bag
+    for (let a = Math.PI; a < Math.PI * 2; a += 0.05) sf.px(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * 3), 0x4a525c);
+    // the bag hangs below the hoop and holds whatever was caught
+    for (let dy = 1; dy <= D; dy++) {
+      const w = Math.round(R * Math.sqrt(1 - (dy / (D + 1)) ** 2));
+      for (let dx = -w; dx <= w; dx++) {
+        const px = cx + dx + sway(dy), py = cy + dy;
+        if (Math.abs(dx) === w || dy === D) sf.blend(px, py, 0xfbf8ee, 0.9);
+        else if ((dx + dy) % 3 === 0 || (dx - dy) % 3 === 0) sf.blend(px, py, 0xf4f0e0, 0.55);
+        else sf.blend(px, py, 0xdfe8e0, 0.12);
+      }
+    }
+    this.caught.forEach((c, i) => {
+      const bx = cx - 6 + (i % 4) * 4 + sway(D - 2), by = cy + D - 3 - Math.floor(i / 4) * 2;
+      sf.px(bx, by, mix(c, 0xffffff, 0.2));
+      sf.px(bx + 1, by, c);
+      sf.px(bx + 2, by, mix(c, 0x000000, 0.2));
+      sf.px(bx + 1, by + 1, mix(c, 0x000000, 0.3));
+    });
+    // the front of the hoop
+    for (let a = 0; a <= Math.PI; a += 0.05) sf.px(Math.round(cx + Math.cos(a) * R), Math.round(cy + Math.sin(a) * 3), 0x9aa6b2);
+    sf.px(cx + R, cy, 0xc8d2dc);
+    // the handle, up and to the right out of the pond
+    for (let k = 0; k < 200; k++) {
+      const px = Math.round(cx + R + k * 0.7), py = cy - k;
+      if (py < 2 || px > VIEW_W - 4) break;
+      sf.px(px, py, 0xc89058);
+      sf.px(px + 1, py, 0x9a6634);
+      sf.px(px + 2, py, 0x5e3c1e);
+    }
+  }
+
   render(sf: Surface, time: number, env: Env): void {
     const m = this.model, s = m.s;
     const sky = skyAt(env.hour);
@@ -511,6 +578,8 @@ export class PondHabitat implements Habitat {
       sf.blend(x, POND.surface, 0xeafff6, w > 0.2 ? 0.75 : 0.4);
       if (w > 1.3) sf.blend(x, POND.surface + 1, 0xcff5e6, 0.4);
     }
+
+    if (this.netAt) this.drawNet(sf, this.netAt.x, this.netAt.y, time);
 
     if (dark) sf.multiply(0.32, 0.38, 0.6);
     else if (night) {
