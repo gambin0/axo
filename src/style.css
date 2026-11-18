@@ -466,3 +466,13 @@ select {
   background: var(--warn);
   color: #10202a;
 }
+.renames {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+.renames .plain {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -434,6 +434,34 @@ function updateRow(): HTMLElement {
   return el('div', { class: 'version' }, status, btn);
 }
 
+function renameDialog(id: PetId): void {
+  const h = habitats[id];
+  const old = h.name;
+  const q = `What's the new name for ${old} the ${PETS[id].kind}?`;
+  const ask = readable(q);
+  const input = el('input', { type: 'text', maxLength: 16, value: old, 'aria-label': 'New name', autocomplete: 'off' });
+  const save = () => {
+    const name = input.value.trim().slice(0, 16);
+    dlg.close();
+    if (!name || name === old) return;
+    h.name = name;
+    if (active === id) title.textContent = name;
+    persist();
+    refreshUi();
+    toasts.show(`${old} is now called ${name}!`);
+  };
+  input.addEventListener('keydown', (ev) => ev.key === 'Enter' && save());
+  const dlg = dialog(
+    el('h3', { onpointerdown: () => hear(q, ask.marks) }, ask.node),
+    input,
+    el('button', { class: 'big', type: 'button', onclick: save }, 'Save'),
+    el('button', { class: 'plain', type: 'button', onclick: () => dlg.close() }, 'Cancel'),
+  );
+  hear(q, ask.marks);
+  input.focus();
+  input.select();
+}
+
 function settingsDialog(): void {
   const soundBtn = el('button', { class: 'plain', type: 'button' }, el('span', {}, ''));
   const paint = () => (soundBtn.firstElementChild!.textContent = sound.enabled ? '🔊 Sound is on' : '🔇 Sound is off');
@@ -463,7 +491,18 @@ function settingsDialog(): void {
   });
   paintRead();
 
-  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, readBtn, el('p', {}, 'Grown-ups: press and hold to start a pet over.')];
+  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, readBtn];
+  const named = PET_IDS.filter((id) => habitats[id].name);
+  if (named.length) {
+    parts.push(el('p', {}, 'Give a pet a new name:'));
+    const grid = el('div', { class: 'renames' });
+    for (const id of named)
+      grid.append(
+        el('button', { class: 'plain', type: 'button', onclick: () => (dlg.close(), renameDialog(id)) }, `✏️ ${habitats[id].name}`),
+      );
+    parts.push(grid);
+  }
+  parts.push(el('p', {}, 'Grown-ups: press and hold to start a pet over.'));
   for (const id of PET_IDS)
     parts.push(
       holdButton(`Hold to reset the ${PETS[id].kind}`, 2000, () => {
