@@ -309,6 +309,11 @@ canvas {
   z-index: 5;
 }
 .toast {
+  pointer-events: auto;
+  color: inherit;
+  font-family: inherit;
+  line-height: 1.35;
+  cursor: pointer;
   background: rgba(11, 21, 28, 0.9);
   border: 2px solid var(--panel-2);
   padding: 8px 14px;
@@ -448,4 +453,16 @@ select {
   color: var(--muted);
   font-size: 14px;
   text-align: center;
+}
+
+/* read-aloud: the word being said lights up */
+.w,
+.said-able {
+  border-radius: 5px;
+  transition: background-color 0.12s, color 0.12s;
+}
+.w.said,
+.said-able.said {
+  background: var(--warn);
+  color: #10202a;
 }

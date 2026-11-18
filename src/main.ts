@@ -3,6 +3,7 @@ import { elapsedSeconds, runCatchup } from './core/catchup';
 import { startLoop } from './core/loop';
 import { freshSave, loadSave, SAVE_VERSION, writeSave, type SaveData } from './core/save';
 import { envAt, realClock } from './core/time';
+import { Speaker, wordSpans } from './core/speech';
 import { BUILD, startUpdater } from './core/update';
 import { AntHabitat } from './pets/ants/farm';
 import { drawAxolotl } from './pets/axolotl/art';
@@ -74,7 +75,18 @@ const habitats = {} as Record<PetId, Habitat>;
 for (const id of PET_IDS) habitats[id] = PETS[id].create(save.pets[id] ?? null, newSeed());
 const sound = new Sound();
 sound.enabled = save.settings.sound;
-const toasts = new Toasts();
+const speaker = new Speaker();
+speaker.enabled = save.settings.readAloud;
+const toasts = new Toasts(speaker);
+/** Any touch counts as permission to make sound. (Speech starts from taps too, which is what tablets need.) */
+const unlock = () => sound.unlock();
+/** Say an on-screen label when it's tapped, lighting up its words. */
+const hear = (text: string, marks: HTMLElement[] = []) => speaker.sayNow(text, marks);
+/** Text that lights up word by word when read. */
+function readable(text: string): { node: HTMLElement; marks: HTMLElement[] } {
+  const { nodes, marks } = wordSpans(text);
+  return { node: el('span', {}, ...nodes), marks };
+}
 const surface = new Surface(VIEW_W, VIEW_H);
 let active: PetId | null = null;
 let speed = 1;
@@ -83,6 +95,7 @@ function persist(): void {
   save.version = SAVE_VERSION;
   save.lastSeen = clock.now();
   save.settings.sound = sound.enabled;
+  save.settings.readAloud = speaker.enabled;
   // A pet is only saved once it has been named, i.e. adopted.
   save.pets = {};
   for (const id of PET_IDS) if (habitats[id].name) save.pets[id] = habitats[id].serialize();
@@ -112,7 +125,7 @@ const cardGrid = el('div', { class: 'cards' });
 for (const id of PET_IDS) {
   const canvas = el('canvas', { width: VIEW_W, height: VIEW_H, 'aria-hidden': 'true' });
   const name = el('span', {});
-  const badge = el('span', { class: 'badge' });
+  const badge = el('span', { class: 'badge', onpointerdown: () => (unlock(), hear(badge.textContent ?? '')) });
   cards[id] = { canvas, name, badge };
   cardGrid.append(
     el('button', { class: 'card', type: 'button', onclick: () => open(id) }, canvas, el('div', { class: 'row' }, name, badge)),
@@ -122,8 +135,9 @@ home.append(cardGrid, el('button', { class: 'pill', type: 'button', onclick: () 
 
 const view = el('canvas', { id: 'view', width: VIEW_W, height: VIEW_H });
 const stage = el('div', { id: 'stage' }, view);
-const title = el('h2', {});
-const badge = el('span', { class: 'badge' });
+const title = el('h2', { onpointerdown: () => (unlock(), active && hear(petIntro(active))) });
+const petIntro = (id: PetId) => `${habitats[id].name} the ${PETS[id].kind}`;
+const badge = el('span', { class: 'badge', onpointerdown: () => (unlock(), hear(badge.textContent ?? '')) });
 const statsBox = el('div', { id: 'stats' });
 const toolsBox = el('div', { id: 'tools', role: 'toolbar', 'aria-label': 'Tools' });
 const habitatScreen = el(
@@ -136,13 +150,14 @@ const habitatScreen = el(
 app.append(home, habitatScreen, toasts.root);
 
 function open(id: PetId | null): void {
-  sound.unlock();
+  unlock();
   if (id && !habitats[id].name) return nameDialog(id);
   active = id;
   home.hidden = id !== null;
   habitatScreen.hidden = id === null;
   toolsKey = '';
   if (id) {
+    hear(petIntro(id));
     if (!toldDrag) {
       toldDrag = true;
       toasts.show('Drag food from the buttons into the habitat, or just tap a button to put it in its usual place.');
@@ -170,7 +185,7 @@ function toArt(ev: PointerEvent): [number, number] {
 let pressed = false;
 view.addEventListener('pointerdown', (ev) => {
   if (!active) return;
-  sound.unlock();
+  unlock();
   pressed = true;
   view.setPointerCapture(ev.pointerId);
   habitats[active].pointer('down', ...toArt(ev));
@@ -209,13 +224,14 @@ function refreshUi(): void {
   statsBox.replaceChildren(
     ...h.stats().map((s) => {
       const ico = el('span', { class: 'ico', 'aria-hidden': 'true' }, s.icon);
-      if (typeof s.value === 'string') return el('div', { class: 'stat' }, ico, `${s.label}: `, el('b', {}, s.value));
+      const say = () => (unlock(), hear(typeof s.value === 'string' ? `${s.label}: ${s.value}` : s.label));
+      if (typeof s.value === 'string') return el('div', { class: 'stat', onpointerdown: say }, ico, `${s.label}: `, el('b', {}, s.value));
       const pct = Math.round(Math.max(0, Math.min(100, s.value)));
       const fill = el('i', {});
       fill.style.width = `${pct}%`;
       return el(
         'div',
-        { class: 'stat', role: 'meter', 'aria-label': s.label, 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 },
+        { class: 'stat', onpointerdown: say, role: 'meter', 'aria-label': s.label, 'aria-valuenow': pct, 'aria-valuemin': 0, 'aria-valuemax': 100 },
         ico,
         s.label,
         el('div', { class: `bar${pct < 30 ? ' low' : ''}` }, fill),
@@ -229,8 +245,9 @@ function refreshUi(): void {
   if (key === toolsKey) return;
   toolsKey = key;
   toolsBox.replaceChildren(
-    ...tools.map((t) =>
-      el(
+    ...tools.map((t) => {
+      const label = readable(t.label);
+      return el(
         'button',
         {
           class: 'tool',
@@ -239,9 +256,13 @@ function refreshUi(): void {
           'data-drag': t.kind === 'drag' ? '' : undefined,
           'aria-pressed': t.kind === 'drag' ? undefined : String(t.kind === 'mode' ? h.tool === t.id : !!t.on),
           'aria-label': t.kind === 'drag' ? `${t.label}: drag it in, or tap to put it in its usual place` : t.label,
-          onpointerdown: t.kind === 'drag' ? (ev: PointerEvent) => startDrag(t, ev) : undefined,
+          onpointerdown: (ev: PointerEvent) => {
+            unlock();
+            if (!t.disabled) hear(t.label, label.marks);
+            if (t.kind === 'drag') startDrag(t, ev);
+          },
           onclick: (ev: MouseEvent) => {
-            sound.unlock();
+            unlock();
             // a drag tool's taps and drags are handled by its pointer events; a keyboard press puts it in its usual place
             if (t.kind === 'drag') {
               if (ev.detail === 0) h.drop(t.id, null);
@@ -250,9 +271,9 @@ function refreshUi(): void {
           },
         },
         el('span', { class: 'ico', 'aria-hidden': 'true' }, t.icon),
-        el('span', { class: 'lbl' }, t.label),
-      ),
-    ),
+        el('span', { class: 'lbl' }, label.node),
+      );
+    }),
   );
 }
 
@@ -273,7 +294,7 @@ let toldDrag = false;
 
 function startDrag(t: Tool, ev: PointerEvent): void {
   if (!active || t.disabled || ev.button > 0) return;
-  sound.unlock();
+  unlock();
   drag = { id: t.id, sx: ev.clientX, sy: ev.clientY, moved: false, ghost: el('div', { class: 'ghost', 'aria-hidden': 'true' }, t.icon), at: null, hint: null };
   ev.preventDefault();
 }
@@ -343,7 +364,9 @@ function nameDialog(id: PetId): void {
   const info = PETS[id];
   const input = el('input', { type: 'text', maxLength: 16, placeholder: info.defaultName, 'aria-label': 'Name', autocomplete: 'off' });
   let morph: Morph = 'leucistic';
-  const parts: Node[] = [el('h3', {}, info.ask), input];
+  const ask = readable(info.ask);
+  const parts: Node[] = [el('h3', { onpointerdown: () => hear(info.ask, ask.marks) }, ask.node), input];
+  hear(info.ask, ask.marks);
 
   if (id === 'axolotl') {
     const grid = el('div', { class: 'morphs' });
@@ -416,13 +439,31 @@ function settingsDialog(): void {
   const paint = () => (soundBtn.firstElementChild!.textContent = sound.enabled ? '🔊 Sound is on' : '🔇 Sound is off');
   soundBtn.addEventListener('click', () => {
     sound.enabled = !sound.enabled;
-    sound.unlock();
+    unlock();
     paint();
     persist();
   });
   paint();
 
-  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, el('p', {}, 'Grown-ups: press and hold to start a pet over.')];
+  const readBtn = el('button', { class: 'plain', type: 'button' }, el('span', {}, ''));
+  const paintRead = () =>
+    (readBtn.firstElementChild!.textContent = !speaker.available
+      ? '🗣️ Read aloud isn’t available on this device'
+      : speaker.enabled
+        ? '🗣️ Read aloud is on'
+        : '🤫 Read aloud is off');
+  readBtn.disabled = !speaker.available;
+  readBtn.addEventListener('click', () => {
+    speaker.enabled = !speaker.enabled;
+    if (!speaker.enabled) speaker.stop();
+    unlock();
+    paintRead();
+    persist();
+    hear('Read aloud is on');
+  });
+  paintRead();
+
+  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, readBtn, el('p', {}, 'Grown-ups: press and hold to start a pet over.')];
   for (const id of PET_IDS)
     parts.push(
       holdButton(`Hold to reset the ${PETS[id].kind}`, 2000, () => {

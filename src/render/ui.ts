@@ -1,3 +1,4 @@
+import { wordSpans, type Speaker } from '../core/speech';
 import type { Surface } from './surface';
 
 type Child = Node | string | null | undefined | false;
@@ -43,11 +44,28 @@ export function fitCanvas(canvas: HTMLCanvasElement, boxW: number, boxH: number)
 export class Toasts {
   readonly root = el('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' });
 
+  constructor(private readonly speaker?: Speaker) {}
+
+  /** Show a message; it is also read aloud, and stays up until it has been. Tap it to hear it again. */
   show(text: string, ms = 3800): void {
     while (this.root.childElementCount >= 3) this.root.firstElementChild?.remove();
-    const t = el('div', { class: 'toast' }, text);
+    const { nodes, marks } = wordSpans(text);
+    const t = el('button', { class: 'toast', type: 'button' }, ...nodes);
+    t.addEventListener('click', () => this.speaker?.sayNow(text, marks));
     this.root.append(t);
-    setTimeout(() => t.remove(), ms);
+    let shown = false;
+    let spoken = !this.speaker?.enabled;
+    const close = () => {
+      if (shown && spoken) t.remove();
+    };
+    setTimeout(() => ((shown = true), close()), ms);
+    this.speaker?.say(text, marks, () => setTimeout(() => ((spoken = true), close()), 1200));
+    // removed early (too many at once): don't read it any more
+    new MutationObserver((_, obs) => {
+      if (t.isConnected) return;
+      obs.disconnect();
+      this.speaker?.drop(marks);
+    }).observe(this.root, { childList: true });
   }
 }
 
