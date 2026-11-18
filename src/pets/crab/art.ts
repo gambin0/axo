@@ -3,11 +3,11 @@ import { bayer, mix, type Surface } from '../../render/surface';
 
 /** Shell colour sets: lit, base, shade, dark, and an accent for stripes and spots. */
 export const SHELL_HUES = [
-  { ramp: [0xf6ead0, 0xe0cba2, 0xb89a6e, 0x7d6444], accent: 0x9c5a3a },
-  { ramp: [0xfbe0e6, 0xeeb4c4, 0xc98098, 0x8a4c62], accent: 0xd24a78 },
-  { ramp: [0xf4c98a, 0xd9985a, 0xa8683a, 0x6a3e22], accent: 0xf2e8d0 },
-  { ramp: [0xd9c4ee, 0xb08ed2, 0x7e5ea6, 0x4c3670], accent: 0xf4eefc },
-  { ramp: [0xcdeef0, 0x8fcad2, 0x5a98a8, 0x34606e], accent: 0xf4f0d8 },
+  { name: 'Sandy', ramp: [0xf6ead0, 0xe0cba2, 0xb89a6e, 0x7d6444], accent: 0x9c5a3a },
+  { name: 'Pink', ramp: [0xfbe0e6, 0xeeb4c4, 0xc98098, 0x8a4c62], accent: 0xd24a78 },
+  { name: 'Amber', ramp: [0xf4c98a, 0xd9985a, 0xa8683a, 0x6a3e22], accent: 0xf2e8d0 },
+  { name: 'Lilac', ramp: [0xd9c4ee, 0xb08ed2, 0x7e5ea6, 0x4c3670], accent: 0xf4eefc },
+  { name: 'Sea glass', ramp: [0xcdeef0, 0x8fcad2, 0x5a98a8, 0x34606e], accent: 0xf4f0d8 },
 ] as const;
 
 /** Radius in pixels of a shell of the given size (1..6). */

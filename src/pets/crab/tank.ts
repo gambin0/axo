@@ -3,8 +3,8 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
-import { drawCrab, drawMound, drawShell, shellRadius } from './art';
+import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { drawCrab, drawMound, drawShell, SHELL_HUES, shellRadius } from './art';
 import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, SPARE_X, TANK, type Pt, type Shell } from './model';
 
 const SAND = [0xe8d6a8, 0xd2bc8a, 0xb89f70, 0x967f58];
@@ -40,6 +40,24 @@ export class CrabHabitat implements Habitat {
 
   private who(): string {
     return this.model.s.name || 'Your crab';
+  }
+
+  /** The colour of the shell it is wearing now. Its next shell will be whatever it finds. */
+  looks(): Looks {
+    const sh = this.model.s.shell;
+    return {
+      what: 'shell colour',
+      names: SHELL_HUES.map((h) => h.name),
+      current: sh.hue % SHELL_HUES.length,
+      preview: (sf, i) => {
+        sf.rect(0, 0, sf.w, sf.h, 0xe6cf9c);
+        drawCrab(sf, {
+          x: sf.w / 2 + 3, y: sf.h - 6, facing: 1, size: 5, hidden: 0, phase: 0, moving: false, cramped: false, reach: 0,
+          shell: { size: 5, shape: sh.shape, pattern: sh.pattern, hue: i },
+        });
+      },
+      choose: (i) => (sh.hue = i),
+    };
   }
 
   // ---- simulation --------------------------------------------------------

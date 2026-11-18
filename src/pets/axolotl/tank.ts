@@ -3,9 +3,9 @@ import type { Env } from '../../core/time';
 import { drawGlassTank } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
 import { drawAxolotl } from './art';
-import { AXO, Axolotl, newAxoState, TANK, type DecorId, type Morph } from './model';
+import { AXO, Axolotl, MORPHS, newAxoState, TANK, type DecorId, type Morph } from './model';
 
 const WATER = [0x58b7bd, 0x3d9aa8, 0x2c7d93, 0x20647f, 0x194f69];
 const PEBBLE = [0xd2c2a2, 0xb3a283, 0x94846a, 0x766856, 0x5c5145];
@@ -84,6 +84,18 @@ export class AxolotlHabitat implements Habitat {
   }
   setMorph(m: Morph): void {
     this.model.s.morph = m;
+  }
+  looks(): Looks {
+    return {
+      what: 'colour',
+      names: MORPHS.map((m) => m[0].toUpperCase() + m.slice(1)),
+      current: Math.max(0, MORPHS.indexOf(this.model.s.morph)),
+      preview: (sf, i) => {
+        sf.rect(0, 0, sf.w, sf.h, 0x2c7d93);
+        drawAxolotl(sf, { x: sf.w / 2, y: sf.h / 2, turn: 1, size: 1.4, morph: MORPHS[i], swimPhase: 1, gillPhase: 0, swim: 0.3, mouth: 0, pale: 0, grounded: false });
+      },
+      choose: (i) => this.setMorph(MORPHS[i]),
+    };
   }
 
   // ---- simulation --------------------------------------------------------

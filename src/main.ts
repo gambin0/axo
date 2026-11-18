@@ -6,8 +6,6 @@ import { envAt, realClock } from './core/time';
 import { englishVoices, onVoicesChanged, Speaker, wordSpans } from './core/speech';
 import { BUILD, startUpdater } from './core/update';
 import { AntHabitat } from './pets/ants/farm';
-import { drawAxolotl } from './pets/axolotl/art';
-import { MORPHS, type Morph } from './pets/axolotl/model';
 import { HiveHabitat } from './pets/bees/hive';
 import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
@@ -15,7 +13,7 @@ import { CrabHabitat } from './pets/crab/tank';
 import { CageHabitat } from './pets/hamster/cage';
 import { PondHabitat } from './pets/pond/pond';
 import { TerrariumHabitat } from './pets/snail/terrarium';
-import type { DropHint, Habitat, PetId, Tool } from './pets/types';
+import type { DropHint, Habitat, Looks, PetId, Tool } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
 import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
 
@@ -362,37 +360,38 @@ function dialog(...children: Node[]): { close(): void } {
   return { close };
 }
 
+/** A grid of little pictures, one per way the pet can look, with the picked one outlined. */
+function lookGrid(looks: Looks, selected: number, onPick: (i: number) => void): HTMLElement {
+  const buttons = looks.names.map((name, i) => {
+    const c = el('canvas', { width: 80, height: 40 });
+    const sf = new Surface(80, 40);
+    looks.preview(sf, i);
+    present(c, sf);
+    const b = el('button', { type: 'button', 'aria-label': name, 'aria-pressed': String(i === selected) }, c, el('span', {}, name));
+    b.addEventListener('click', () => {
+      onPick(i);
+      buttons.forEach((o, j) => o.setAttribute('aria-pressed', String(j === i)));
+    });
+    return b;
+  });
+  return el('div', { class: 'morphs' }, ...buttons);
+}
+
 function nameDialog(id: PetId): void {
   const info = PETS[id];
   const input = el('input', { type: 'text', maxLength: 16, placeholder: info.defaultName, 'aria-label': 'Name', autocomplete: 'off' });
-  let morph: Morph = 'leucistic';
+  const looks = id === 'axolotl' ? habitats[id].looks?.() : undefined;
+  let pick = looks?.current ?? 0;
   const ask = readable(info.ask);
   const parts: Node[] = [el('h3', { onpointerdown: () => hear(info.ask, ask.marks) }, ask.node), input];
   hear(info.ask, ask.marks);
 
-  if (id === 'axolotl') {
-    const grid = el('div', { class: 'morphs' });
-    const buttons = MORPHS.map((m) => {
-      const c = el('canvas', { width: 80, height: 40 });
-      const sf = new Surface(80, 40);
-      for (let i = 0; i < sf.data.length; i += 4) sf.data.set([44, 125, 147, 255], i);
-      drawAxolotl(sf, { x: 40, y: 20, turn: 1, size: 1.4, morph: m, swimPhase: 1, gillPhase: 0, swim: 0.3, mouth: 0, pale: 0, grounded: false });
-      present(c, sf);
-      const b = el('button', { type: 'button', 'aria-label': m, 'aria-pressed': String(m === morph) }, c);
-      b.addEventListener('click', () => {
-        morph = m;
-        buttons.forEach((o, i) => o.setAttribute('aria-pressed', String(MORPHS[i] === m)));
-      });
-      return b;
-    });
-    grid.append(...buttons);
-    parts.push(el('p', {}, 'Pick a colour:'), grid);
-  }
+  if (looks) parts.push(el('p', {}, `Pick a ${looks.what}:`), lookGrid(looks, pick, (i) => (pick = i)));
 
   const start = () => {
     const h = habitats[id];
     h.name = input.value.trim().slice(0, 16) || info.defaultName;
-    if (h instanceof AxolotlHabitat) h.setMorph(morph);
+    looks?.choose(pick);
     dlg.close();
     open(id);
   };
@@ -464,6 +463,29 @@ function renameDialog(id: PetId): void {
   input.select();
 }
 
+function lookDialog(id: PetId): void {
+  const h = habitats[id];
+  const looks = h.looks!();
+  let pick = looks.current;
+  const q = `Pick a new ${looks.what} for ${h.name}`;
+  const ask = readable(q);
+  const save = () => {
+    dlg.close();
+    if (pick === looks.current) return;
+    looks.choose(pick);
+    persist();
+    refreshUi();
+    toasts.show(`${h.name} has a new look!`);
+  };
+  const dlg = dialog(
+    el('h3', { onpointerdown: () => hear(q, ask.marks) }, ask.node),
+    lookGrid(looks, pick, (i) => (pick = i)),
+    el('button', { class: 'big', type: 'button', onclick: save }, 'Save'),
+    el('button', { class: 'plain', type: 'button', onclick: () => dlg.close() }, 'Cancel'),
+  );
+  hear(q, ask.marks);
+}
+
 function settingsDialog(): void {
   const soundBtn = el('button', { class: 'plain', type: 'button' }, el('span', {}, ''));
   const paint = () => (soundBtn.firstElementChild!.textContent = sound.enabled ? '🔊 Sound is on' : '🔇 Sound is off');
@@ -522,6 +544,16 @@ function settingsDialog(): void {
     for (const id of named)
       grid.append(
         el('button', { class: 'plain', type: 'button', onclick: () => (dlg.close(), renameDialog(id)) }, `✏️ ${habitats[id].name}`),
+      );
+    parts.push(grid);
+  }
+  const lookable = named.filter((id) => habitats[id].looks);
+  if (lookable.length) {
+    parts.push(el('p', {}, 'Change how a pet looks:'));
+    const grid = el('div', { class: 'renames' });
+    for (const id of lookable)
+      grid.append(
+        el('button', { class: 'plain', type: 'button', onclick: () => (dlg.close(), lookDialog(id)) }, `🎨 ${habitats[id].name}`),
       );
     parts.push(grid);
   }

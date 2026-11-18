@@ -41,6 +41,18 @@ export interface Status {
 
 export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond' | 'crab' | 'snail' | 'bees' | 'hamster';
 
+/** The ways a pet can look (coat, colour morph, shell colour), picked from Settings. */
+export interface Looks {
+  /** What is being picked, e.g. "colour". */
+  what: string;
+  /** One name per option. */
+  names: string[];
+  current: number;
+  /** Paints a small preview of option i, background and all. */
+  preview(sf: Surface, i: number): void;
+  choose(i: number): void;
+}
+
 /** One habitat: a pet's simulation plus how it draws and responds to touch. */
 export interface Habitat {
   readonly id: PetId;
@@ -66,4 +78,6 @@ export interface Habitat {
   status(env: Env): Status;
   serialize(): unknown;
   drainEvents(): UiEvent[];
+  /** How the pet can be made to look, if it has a choice. */
+  looks?(): Looks;
 }

@@ -3,8 +3,8 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
-import { drawHamster, type HamPoseName } from './art';
+import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { COATS, drawHamster, type HamPoseName } from './art';
 import {
   BOTTLE, CAGE, GROUND, HAM, Hamster, NEST, newHamsterState, polyPrefix, SPOT, STORE, SWEETS, TREATS, TUBE, tubePath, TUNNELS, tunnelOpen,
   WHEEL, type Pt,
@@ -63,6 +63,19 @@ export class CageHabitat implements Habitat {
 
   private who(): string {
     return this.model.s.name || 'Your hamster';
+  }
+
+  looks(): Looks {
+    return {
+      what: 'coat',
+      names: COATS.map((c) => c.name),
+      current: this.model.s.coat,
+      preview: (sf, i) => {
+        sf.rect(0, 0, sf.w, sf.h, 0xe8d6a8);
+        drawHamster(sf, { x: sf.w / 2 - 2, y: sf.h - 3, face: 1, pose: 'sit', phase: 0, cheeks: 0, coat: i, breath: 0.5, blink: false, twitch: 0 });
+      },
+      choose: (i) => (this.model.s.coat = i),
+    };
   }
 
   // ---- simulation --------------------------------------------------------

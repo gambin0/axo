@@ -395,6 +395,12 @@ button:focus-visible {
   width: 100%;
   border-radius: 8px;
 }
+.morphs button span {
+  display: block;
+  margin-top: 4px;
+  color: #f4ead8;
+  font-weight: 700;
+}
 .big {
   background: var(--accent);
   color: #2a1c00;
