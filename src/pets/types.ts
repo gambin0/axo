@@ -1,7 +1,7 @@
 import type { Env } from '../core/time';
 import type { Surface } from '../render/surface';
 
-export type SoundName = 'plop' | 'munch' | 'chirp' | 'bubble' | 'no' | 'tap' | 'splash' | 'pop' | 'hatch' | 'croak';
+export type SoundName = 'plop' | 'munch' | 'chirp' | 'bubble' | 'no' | 'tap' | 'splash' | 'pop' | 'hatch' | 'croak' | 'cheep' | 'cluck';
 
 /** Things the shell should surface to the player. */
 export type UiEvent = { type: 'sound'; name: SoundName } | { type: 'toast'; text: string };
@@ -39,7 +39,7 @@ export interface Status {
   tone: 'good' | 'warn' | 'sleep';
 }
 
-export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond' | 'crab' | 'snail' | 'bees' | 'hamster';
+export type PetId = 'axolotl' | 'ants' | 'butterfly' | 'pond' | 'crab' | 'snail' | 'bees' | 'hamster' | 'chicken';
 
 /** The ways a pet can look (coat, colour morph, shell colour), picked from Settings. */
 export interface Looks {

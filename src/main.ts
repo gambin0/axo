@@ -12,6 +12,7 @@ import { AxolotlHabitat } from './pets/axolotl/tank';
 import { ButterflyHabitat } from './pets/butterfly/jar';
 import { CrabHabitat } from './pets/crab/tank';
 import { CageHabitat } from './pets/hamster/cage';
+import { CoopHabitat } from './pets/chicken/coop';
 import { PondHabitat } from './pets/pond/pond';
 import { TerrariumHabitat } from './pets/snail/terrarium';
 import type { DropHint, Habitat, Looks, PetId, Tool } from './pets/types';
@@ -59,6 +60,10 @@ const PETS: Record<PetId, PetInfo> = {
   hamster: {
     title: 'Hamster Cage', kind: 'hamster', defaultName: 'Peanut', ask: 'What will you call your hamster?',
     create: (saved, seed) => new CageHabitat(saved, seed),
+  },
+  chicken: {
+    title: 'Chicken Coop', kind: 'chicken', defaultName: 'Nugget', ask: 'What will you call your chick?',
+    create: (saved, seed) => new CoopHabitat(saved, seed),
   },
 };
 const PET_IDS = Object.keys(PETS) as PetId[];
@@ -436,7 +441,8 @@ function lookGrid(looks: Looks, selected: number, onPick: (i: number) => void): 
 function nameDialog(id: PetId): void {
   const info = PETS[id];
   const input = el('input', { type: 'text', maxLength: 16, placeholder: info.defaultName, 'aria-label': 'Name', autocomplete: 'off' });
-  const looks = id === 'axolotl' ? habitats[id].looks?.() : undefined;
+  // pets whose look is part of who they are get to pick it at the start
+  const looks = id === 'axolotl' || id === 'chicken' ? habitats[id].looks?.() : undefined;
   let pick = looks?.current ?? 0;
   const ask = readable(info.ask);
   const parts: Node[] = [el('h3', { onpointerdown: () => hear(info.ask, ask.marks) }, ask.node), input];

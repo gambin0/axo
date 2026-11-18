@@ -13,6 +13,8 @@ const SOUNDS: Record<SoundName, Note[]> = {
   pop: [[880, 0, 0.05, 'sine', 1320]],
   croak: [[150, 0, 0.09, 'sawtooth', 110], [170, 0.13, 0.12, 'sawtooth', 100]],
   hatch: [[660, 0, 0.08, 'sine'], [880, 0.09, 0.08, 'sine'], [1100, 0.18, 0.12, 'sine']],
+  cheep: [[2200, 0, 0.06, 'sine', 2900], [2400, 0.09, 0.07, 'sine', 3100]],
+  cluck: [[330, 0, 0.07, 'triangle', 260], [300, 0.11, 0.07, 'triangle', 240], [420, 0.24, 0.12, 'triangle', 300]],
 };
 
 /** Tiny synthesised blips; no audio files. Quiet by default and easy to mute. */

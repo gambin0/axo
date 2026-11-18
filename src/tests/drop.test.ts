@@ -6,6 +6,7 @@ import { HiveHabitat } from '../pets/bees/hive';
 import { ButterflyHabitat } from '../pets/butterfly/jar';
 import { CrabHabitat } from '../pets/crab/tank';
 import { CageHabitat } from '../pets/hamster/cage';
+import { CoopHabitat } from '../pets/chicken/coop';
 import { SLOT_X } from '../pets/bees/model';
 import { GROUND, SPOT } from '../pets/hamster/model';
 import { PondHabitat } from '../pets/pond/pond';
@@ -22,6 +23,7 @@ const make: Record<string, () => Habitat> = {
   snail: () => new TerrariumHabitat(null, 1),
   bees: () => new HiveHabitat(null, 1),
   hamster: () => new CageHabitat(null, 1),
+  chicken: () => new CoopHabitat(null, 1),
 };
 
 describe('dragging things in from the toolbar', () => {

@@ -2,7 +2,7 @@
 
 Design plans for pets that are not built yet. Each one is written so it can be implemented on its own.
 
-Built so far: axolotl, ants, butterfly, pond, the hermit crab, the snail terrarium, the beehive and the hamster (their plans are kept as a record of the design, with changes noted at the top).
+Built so far: axolotl, ants, butterfly, pond, the hermit crab, the snail terrarium, the beehive, the hamster and the chicken coop (their plans are kept as a record of the design, with changes noted at the top).
 
 | Plan | Hook for the kids | Effort | Main risk |
 | --- | --- | --- | --- |
@@ -10,6 +10,7 @@ Built so far: axolotl, ants, butterfly, pond, the hermit crab, the snail terrari
 | [Hamster cage](hamster.md) (built) | Cheek-stuffing, wheel, hoard | High | Fur and a round body in procedural art |
 | [Beehive](beehive.md) (built) | Plant flowers, fill honeycomb | Medium | Feeling too much like the ant farm |
 | [Snail terrarium](snail.md) (built) | Slime trails, slow and calm | Low | Not exciting enough on its own |
+| [Chicken coop](chicken.md) (built) | Hatch a chick, watch it grow, collect eggs | High | A shape that grows smoothly from chick to hen |
 
 Every planned pet is now built.
 
