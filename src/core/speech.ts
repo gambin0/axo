@@ -56,7 +56,8 @@ interface Job {
 
 export class Speaker {
   enabled = true;
-  private voice: SpeechSynthesisVoice | null = null;
+  /** Name of a chosen voice, or '' to use the device's own voice (set in its settings). */
+  voiceName = '';
   private queue: Job[] = [];
   private current: Job | null = null;
   private timer = 0;
@@ -65,9 +66,6 @@ export class Speaker {
 
   constructor() {
     if (!this.synth) return;
-    const pick = () => (this.voice = chooseVoice(this.synth!.getVoices()));
-    pick();
-    this.synth.addEventListener?.('voiceschanged', pick);
   }
 
   get available(): boolean {
@@ -113,10 +111,11 @@ export class Speaker {
     if (!job || !this.synth) return;
     const words = splitWords(job.text);
     const u = new SpeechSynthesisUtterance(job.text);
-    if (this.voice) {
-      u.voice = this.voice;
-      u.lang = this.voice.lang;
-    }
+    const voice = this.voiceName ? this.synth.getVoices().find((v) => v.name === this.voiceName) : undefined;
+    if (voice) {
+      u.voice = voice;
+      u.lang = voice.lang;
+    } else u.lang = deviceEnglish();
     u.rate = 0.9;
     u.pitch = 1.1;
     let gotBoundary = false;
@@ -169,13 +168,25 @@ export class Speaker {
   }
 }
 
-/** Prefer an on-device voice in the tablet's own English (offline, no lag). */
-export function chooseVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
-  const lang = (typeof navigator !== 'undefined' && navigator.language) || 'en-US';
-  const english = voices.filter((v) => v.lang.toLowerCase().startsWith('en'));
-  const score = (v: SpeechSynthesisVoice) =>
-    (v.localService ? 4 : 0) + (v.lang.toLowerCase() === lang.toLowerCase() ? 2 : 0) + (v.default ? 1 : 0);
-  return english.sort((a, b) => score(b) - score(a))[0] ?? null;
+/** The device's language if it is English, so its own voice for that language is used. */
+function deviceEnglish(): string {
+  const lang = (typeof navigator !== 'undefined' && navigator.language) || '';
+  return lang.toLowerCase().startsWith('en') ? lang : 'en-US';
+}
+
+/** English voices on this device, for picking one in Settings. */
+export function englishVoices(): SpeechSynthesisVoice[] {
+  if (typeof speechSynthesis === 'undefined') return [];
+  const seen = new Set<string>();
+  return speechSynthesis
+    .getVoices()
+    .filter((v) => v.lang.toLowerCase().startsWith('en') && !seen.has(v.name) && seen.add(v.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Call when the device's voice list arrives or changes (it loads after the page on some browsers). */
+export function onVoicesChanged(fn: () => void): void {
+  if (typeof speechSynthesis !== 'undefined') speechSynthesis.addEventListener?.('voiceschanged', fn);
 }
 
 /** Wrap each word of an element's text in a span so it can light up while spoken. */

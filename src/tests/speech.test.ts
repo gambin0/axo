@@ -26,6 +26,6 @@ describe('read aloud', () => {
 
   test('read aloud is on for new and old saves', () => {
     expect(freshSave(0).settings.readAloud).toBe(true);
-    expect(migrate({ version: 3, lastSeen: 1, settings: { sound: false }, pets: {} })?.settings).toEqual({ sound: false, readAloud: true });
+    expect(migrate({ version: 3, lastSeen: 1, settings: { sound: false }, pets: {} })?.settings).toEqual({ sound: false, readAloud: true, voice: '' });
   });
 });

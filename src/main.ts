@@ -3,7 +3,7 @@ import { elapsedSeconds, runCatchup } from './core/catchup';
 import { startLoop } from './core/loop';
 import { freshSave, loadSave, SAVE_VERSION, writeSave, type SaveData } from './core/save';
 import { envAt, realClock } from './core/time';
-import { Speaker, wordSpans } from './core/speech';
+import { englishVoices, onVoicesChanged, Speaker, wordSpans } from './core/speech';
 import { BUILD, startUpdater } from './core/update';
 import { AntHabitat } from './pets/ants/farm';
 import { drawAxolotl } from './pets/axolotl/art';
@@ -77,6 +77,7 @@ const sound = new Sound();
 sound.enabled = save.settings.sound;
 const speaker = new Speaker();
 speaker.enabled = save.settings.readAloud;
+speaker.voiceName = save.settings.voice;
 const toasts = new Toasts(speaker);
 /** Any touch counts as permission to make sound. (Speech starts from taps too, which is what tablets need.) */
 const unlock = () => sound.unlock();
@@ -96,6 +97,7 @@ function persist(): void {
   save.lastSeen = clock.now();
   save.settings.sound = sound.enabled;
   save.settings.readAloud = speaker.enabled;
+  save.settings.voice = speaker.voiceName;
   // A pet is only saved once it has been named, i.e. adopted.
   save.pets = {};
   for (const id of PET_IDS) if (habitats[id].name) save.pets[id] = habitats[id].serialize();
@@ -491,7 +493,28 @@ function settingsDialog(): void {
   });
   paintRead();
 
-  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, readBtn];
+  // Voice: the device's own (set in its accessibility settings) unless a grown-up picks one here.
+  const voiceSel = el('select', { 'aria-label': 'Voice' });
+  const fillVoices = () => {
+    const voices = englishVoices();
+    voiceSel.replaceChildren(
+      el('option', { value: '', selected: !speaker.voiceName }, 'Same as the tablet’s settings'),
+      ...voices.map((v) => el('option', { value: v.name, selected: v.name === speaker.voiceName }, `${v.name} (${v.lang})`)),
+    );
+    // a chosen voice that has gone missing (e.g. deleted) falls back to the device's own
+    if (speaker.voiceName && !voices.some((v) => v.name === speaker.voiceName)) voiceSel.value = '';
+  };
+  fillVoices();
+  onVoicesChanged(fillVoices);
+  voiceSel.addEventListener('change', () => {
+    speaker.voiceName = voiceSel.value;
+    persist();
+    hear('Hello! This is how I sound.');
+  });
+  const voiceRow = el('label', { class: 'line' }, el('span', {}, '🗣️ Voice'), voiceSel);
+  voiceSel.disabled = !speaker.available;
+
+  const parts: Node[] = [el('h3', {}, 'Settings'), soundBtn, readBtn, voiceRow];
   const named = PET_IDS.filter((id) => habitats[id].name);
   if (named.length) {
     parts.push(el('p', {}, 'Give a pet a new name:'));

@@ -476,3 +476,7 @@ select {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.line select {
+  min-width: 0;
+  max-width: 70%;
+}

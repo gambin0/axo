@@ -6,6 +6,8 @@ export interface Settings {
   sound: boolean;
   /** Read messages and labels aloud (for children who can't read yet). */
   readAloud: boolean;
+  /** Read-aloud voice name; '' follows the device's own voice setting. */
+  voice: string;
 }
 
 export interface SaveData {
@@ -22,7 +24,7 @@ export interface StorageLike {
 }
 
 export function freshSave(now: number): SaveData {
-  return { version: SAVE_VERSION, lastSeen: now, settings: { sound: true, readAloud: true }, pets: {} };
+  return { version: SAVE_VERSION, lastSeen: now, settings: { sound: true, readAloud: true, voice: '' }, pets: {} };
 }
 
 type Raw = Record<string, unknown>;
@@ -59,7 +61,11 @@ export function migrate(raw: Raw): SaveData | null {
   return {
     version: SAVE_VERSION,
     lastSeen: d.lastSeen,
-    settings: { sound: settings.sound !== false, readAloud: settings.readAloud !== false },
+    settings: {
+      sound: settings.sound !== false,
+      readAloud: settings.readAloud !== false,
+      voice: typeof settings.voice === 'string' ? settings.voice : '',
+    },
     pets: d.pets && typeof d.pets === 'object' ? { ...(d.pets as Raw) } : {},
   };
 }
