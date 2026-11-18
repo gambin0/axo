@@ -656,16 +656,20 @@ export class CageHabitat implements Habitat {
   }
 
   private drawFinger(sf: Surface, f: Pt): void {
-    // a finger reaching in from the right
-    const y0 = Math.round(f.y);
-    for (let x = Math.round(f.x); x < VIEW_W; x++)
+    // a short fingertip pointing left, with rounded ends, held where the player is touching
+    const L = 22;
+    const x0 = Math.round(f.x), y0 = Math.round(f.y);
+    for (let dx = 0; dx <= L; dx++)
       for (let dy = -3; dy <= 3; dy++) {
-        const tip = x - f.x;
-        if (tip < 3 && dy * dy + (3 - tip) ** 2 > 12) continue;
-        sf.px(x, y0 + dy, dy < -1 ? SKIN[0] : dy > 1 ? SKIN[2] : SKIN[1]);
+        const tip = dx < 3 && dy * dy + (3 - dx) ** 2 > 12;
+        const back = dx > L - 3 && dy * dy + (dx - (L - 3)) ** 2 > 12;
+        if (tip || back) continue;
+        let c = dy < -1 ? SKIN[0] : dy > 1 ? SKIN[2] : SKIN[1];
+        if ((dx === 12 || dx === 14) && dy > -3 && dy < 3) c = SKIN[2]; // knuckle creases
+        sf.px(x0 + dx, y0 + dy, c);
       }
-    for (let dy = -2; dy <= 0; dy++) sf.px(Math.round(f.x) + 2, y0 + dy, 0xfbe0d4); // nail
-    for (let dy = -2; dy <= 0; dy++) sf.px(Math.round(f.x) + 3, y0 + dy, 0xfbe0d4);
+    for (let dy = -2; dy <= 0; dy++) sf.px(x0 + 2, y0 + dy, 0xfbe0d4); // nail
+    for (let dy = -2; dy <= 0; dy++) sf.px(x0 + 3, y0 + dy, 0xfbe0d4);
   }
 
   private drawFood(sf: Surface, time: number): void {
