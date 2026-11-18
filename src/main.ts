@@ -3,6 +3,7 @@ import { elapsedSeconds, runCatchup } from './core/catchup';
 import { startLoop } from './core/loop';
 import { freshSave, loadSave, SAVE_VERSION, writeSave, type SaveData } from './core/save';
 import { envAt, realClock } from './core/time';
+import { BUILD, startUpdater } from './core/update';
 import { AntHabitat } from './pets/ants/farm';
 import { drawAxolotl } from './pets/axolotl/art';
 import { MORPHS, type Morph } from './pets/axolotl/model';
@@ -151,6 +152,7 @@ function open(id: PetId | null): void {
   }
   refreshUi();
   persist();
+  if (id === null) maybeUpdate();
 }
 
 function resize(): void {
@@ -375,6 +377,40 @@ function nameDialog(id: PetId): void {
   input.focus();
 }
 
+// ---- updates -------------------------------------------------------------
+
+/** Switch to a downloaded update, but only when nobody is mid-play: on the home screen with no dialog open, or while the app is hidden. */
+function maybeUpdate(): void {
+  if (!updater.ready) return;
+  if (!document.hidden && (active !== null || document.querySelector('.scrim'))) return;
+  persist();
+  updater.apply();
+}
+const updater = startUpdater(maybeUpdate);
+
+function updateRow(): HTMLElement {
+  const status = el('span', {}, `Version ${BUILD}`);
+  const btn = el('button', { class: 'plain', type: 'button' }, '🔄 Check for updates');
+  btn.addEventListener('click', async () => {
+    if (updater.ready) {
+      persist();
+      return updater.apply();
+    }
+    if (!navigator.onLine) return void (status.textContent = `Version ${BUILD} · offline, can't check`);
+    btn.disabled = true;
+    status.textContent = `Version ${BUILD} · checking…`;
+    await updater.check();
+    // the new build takes a moment to download after the check finds it
+    await new Promise((r) => setTimeout(r, 2500));
+    btn.disabled = false;
+    if (updater.ready) {
+      status.textContent = `Version ${BUILD} · update downloaded`;
+      btn.textContent = '✨ Update now';
+    } else status.textContent = `Version ${BUILD} · up to date`;
+  });
+  return el('div', { class: 'version' }, status, btn);
+}
+
 function settingsDialog(): void {
   const soundBtn = el('button', { class: 'plain', type: 'button' }, el('span', {}, ''));
   const paint = () => (soundBtn.firstElementChild!.textContent = sound.enabled ? '🔊 Sound is on' : '🔇 Sound is off');
@@ -403,7 +439,8 @@ function settingsDialog(): void {
     select.addEventListener('change', () => (speed = Number(select.value)));
     parts.push(el('div', { class: 'line' }, el('span', {}, 'Debug: time speed'), select));
   }
-  parts.push(el('button', { class: 'big', type: 'button', onclick: () => dlg.close() }, 'Done'));
+  parts.push(updateRow());
+  parts.push(el('button', { class: 'big', type: 'button', onclick: () => (dlg.close(), maybeUpdate()) }, 'Done'));
   const dlg = dialog(...parts);
 }
 
@@ -459,7 +496,10 @@ refreshUi();
 startLoop(step, render, (seconds) => catchUp(elapsedSeconds(0, seconds * 1000)));
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) persist();
+  if (document.hidden) {
+    persist();
+    maybeUpdate();
+  }
 });
 window.addEventListener('pagehide', persist);
 
