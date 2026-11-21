@@ -142,6 +142,13 @@ describe('beehive', () => {
     expect(h.built()).toBeLessThanOrEqual(BEE.combCap[h.stage()]);
   });
 
+  test('the comb keeps growing once the hive is full of bees, even with empty cells about', () => {
+    const h = fresh(3);
+    away(h, 14, keepFlowers(h));
+    expect(h.s.workers).toBe(BEE.maxWorkers);
+    expect(h.built()).toBe(COLS * ROWS);
+  });
+
   test('a cared-for colony grows from starter toward a full hive, but never past the cap', () => {
     const h = fresh(3);
     away(h, 14, keepFlowers(h));
@@ -312,6 +319,32 @@ describe('beehive', () => {
     runCatchup(a, MAX_CATCHUP_SEC * 5, 12);
     runCatchup(b, MAX_CATCHUP_SEC, 12);
     expect(JSON.stringify(a.serialize())).toBe(JSON.stringify(b.serialize()));
+  });
+
+  test('the garden sets the colony size, and a settled colony stores honey to share', () => {
+    const h = fresh(3);
+    const three = (hr: number) => {
+      if (hr % 48 === 0) [0, 1, 2].forEach((i) => (h.s.flowers[i] = { kind: i, nectar: FLOWERS[i].cap, age: 0, water: 0 }));
+      if (hr % 24 === 0) h.waterAll();
+      if (hr % 24 === 17) h.harvest();
+    };
+    away(h, 14, three);
+    expect(h.s.workers + h.brood()).toBeLessThanOrEqual(BEE.beesBase + 3 * BEE.beesPerFlower + 1);
+    expect(h.s.jars).toBeGreaterThanOrEqual(2);
+    expect(BEE.beesBase + 6 * BEE.beesPerFlower).toBeGreaterThanOrEqual(BEE.maxWorkers);
+  });
+
+  test('an older save whose comb stalled gets the comb its stage should have', () => {
+    const old = fresh(5).serialize() as Partial<ReturnType<Hive['serialize']>>;
+    delete old.combFixed;
+    old.workers = 120;
+    const h = Hive.load(JSON.parse(JSON.stringify(old)), 1);
+    expect(h.built()).toBe(COLS * ROWS);
+    expect(h.s.combFixed).toBe(true);
+    // only once: later loads leave the comb alone
+    const again = h.serialize();
+    again.cells[ORDER[ORDER.length - 1]] = { kind: 'none', t: 0, w: 0 };
+    expect(Hive.load(JSON.parse(JSON.stringify(again)), 1).built()).toBe(COLS * ROWS - 1);
   });
 
   test('save round trip keeps the comb, flowers and jars', () => {

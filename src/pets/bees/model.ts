@@ -86,15 +86,18 @@ export const BEE = {
   layEvery: 25 * 60,
   /** Stores (in cells of honey) the hive needs before the queen lays. */
   layStores: 2.5,
+  /** The garden sets the colony's size: the queen stops laying at beesBase + beesPerFlower per blooming flower. */
+  beesBase: 12,
+  beesPerFlower: 18,
   cellLoads: 4,
   fanTime: DAY,
   larvaCost: 0.4,
   buildCost: 0.1,
   buildEvery: 20 * 60,
-  eatPerBeeDay: 0.06,
+  eatPerBeeDay: 0.04,
   /** Honey cells the bees keep for themselves: harvest never takes these. */
-  reserve: 8,
-  jarCells: 6,
+  reserve: 4,
+  jarCells: 4,
   maxFeeder: 4,
   tripsPerHour: 12,
   foragerShare: 0.4,
@@ -121,6 +124,8 @@ export interface HiveState {
   nextKind: number;
   lamp: boolean;
   rng: number;
+  /** Set once older saves have had their missing comb drawn out (comb used to stall part way). */
+  combFixed?: boolean;
 }
 
 export type HiveFxKind = 'ripple' | 'sparkle' | 'drop' | 'plop' | 'pop' | 'emerge' | 'stage' | 'dance' | 'wilt' | 'jar' | 'buzz' | 'no' | 'honey' | 'build' | 'first';
@@ -182,7 +187,7 @@ export function newHiveState(seed: number, name = ''): HiveState {
   set(9, 'honey', BEE.cellLoads);
   set(8, 'nectar', 1);
   return {
-    name, workers: 8, layCool: 0, buildCool: BEE.buildEvery, debt: 0, cells,
+    name, workers: 8, layCool: 0, buildCool: BEE.buildEvery, debt: 0, cells, combFixed: true,
     flowers: [null, null, { kind: 0, nectar: 3, age: 0, water: 0 }, null, null, null], feeder: 0, jars: 0, nextKind: 1, lamp: false, rng: new Rng(seed).s,
   };
 }
@@ -228,6 +233,15 @@ export class Hive {
       const fl = Array.isArray(r.flowers) ? r.flowers : [];
       base.flowers = Array.from({ length: SLOT_X.length }, (_, i) => (fl[i] ? { ...fl[i]! } : null));
       base.workers = clamp(Math.floor(base.workers) || 8, 1, BEE.maxWorkers);
+      if (!r.combFixed) {
+        // comb used to stop growing once empty cells piled up: draw out what this stage should have
+        const h = new Hive(base);
+        for (const i of ORDER) {
+          if (h.built() >= BEE.combCap[h.stage()]) break;
+          if (base.cells[i].kind === 'none') base.cells[i] = { kind: 'wax', t: 0, w: 0 };
+        }
+      }
+      base.combFixed = true;
     }
     return new Hive(base);
   }
@@ -313,7 +327,11 @@ export class Hive {
     return this.count('honey') >= BEE.reserve + BEE.jarCells;
   }
   canLay(): boolean {
-    return this.s.workers + this.brood() < BEE.maxWorkers && this.s.debt < 1 && this.stores() >= BEE.layStores && this.cellFor('egg') >= 0;
+    return this.s.workers + this.brood() < this.colonyTarget() && this.s.debt < 1 && this.stores() >= BEE.layStores && this.cellFor('egg') >= 0;
+  }
+  /** How many bees the garden can keep: the queen stops laying when the colony reaches it. */
+  colonyTarget(): number {
+    return Math.min(BEE.maxWorkers, BEE.beesBase + BEE.beesPerFlower * this.liveFlowers());
   }
   hungry(): boolean {
     return this.stores() < 1;
@@ -528,10 +546,12 @@ export class Hive {
       } else this.layPending = true;
     } else if (!this.canLay()) this.layPending = false;
 
-    // comb building: draw out another cell when the empty ones run short
+    // comb building: draw out another cell when the empty ones run short, or
+    // when there is honey to spare, so the comb keeps growing toward the stage's size
     s.buildCool = Math.max(0, s.buildCool - dt);
-    const empty = this.count('wax');
-    if (s.buildCool <= 0 && empty < 3 && this.built() < BEE.combCap[this.stage()] && this.stores() >= 1 + BEE.buildCost) {
+    const short = this.count('wax') < 3 && this.stores() >= 1 + BEE.buildCost;
+    const spare = s.debt < 1 && this.stores() >= BEE.layStores + BEE.buildCost;
+    if (s.buildCool <= 0 && (short || spare) && this.built() < BEE.combCap[this.stage()]) {
       const next = ORDER.find((i) => s.cells[i].kind === 'none');
       if (next !== undefined) {
         s.cells[next] = { kind: 'wax', t: 0, w: 0 };

@@ -6,10 +6,12 @@ Pet id: `bees`. Read [the shared notes](README.md) first.
 > - Pet id is `bees`. The comb is 10 by 13 cells (130), drawn out from the middle, with stage caps of 12, 30, 60, 100 and 130 cells.
 > - Foragers really carry one load from a flower to a cell when played live. When time is sped up or the app was closed, foraging is counted instead (daytime only). Both use the same flower and cell state.
 > - A cell holds 4 loads, is fanned for a day, and becomes honey. Brood is exactly one day: 6 h egg, 12 h larva, 6 h capped.
-> - Costs: a larva costs 0.4 cells of honey, each bee eats 0.06 cells a day, a new cell of comb costs 0.1. Unpaid honey debt blocks laying, so the colony is limited by how many flowers there are: one flower stalls near 60 bees, a full garden reaches 120 in about 10 days.
+> - Costs: a larva costs 0.4 cells of honey, each bee eats 0.04 cells a day, a new cell of comb costs 0.1. Unpaid honey debt blocks laying.
+> - The garden sets the colony size: the queen stops laying at 12 bees plus 18 per blooming flower (six flowers allow the full 120). Below that limit the colony stops growing and stores honey, so a jar comes every couple of days with three or more flowers. A full garden reaches 120 bees in about 9 days.
+> - Comb is drawn out when empty cells run short, and also whenever there is honey to spare, up to the stage's cap.
 > - Flower refill: clover 1 load per 3 h, lavender per 4 h, sunflower per 8 h. Watering gives 1.5 times the refill and slows wilting.
 > - The sugar feeder holds 4 loads and does not refill by itself.
-> - The Honey tool is always tappable and refuses with a toast below the reserve (8 cells); a jar takes 6 cells.
+> - The Honey tool is always tappable and refuses with a toast below the reserve (4 cells); a jar takes 4 cells.
 > - Not built: individual bee roles changing over time, house bees fanning specific cells, and the queen's attendants.
 
 ## The idea
