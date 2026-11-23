@@ -53,6 +53,8 @@ export class AntHabitat implements Habitat {
   private hatchToast = 0;
 
   private decorBox: DecorBox;
+  /** Decorations the ants have been seen exploring, so each is told once. */
+  private visited = new Set<string>();
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Colony.load(saved, seed) : new Colony(newColonyState(seed));
@@ -112,6 +114,14 @@ export class AntHabitat implements Habitat {
         case 'stage':
           this.events.push({ type: 'toast', text: `Your colony grew! It is now: ${STAGE_NAMES[m.s.stage]} 🎉` });
           break;
+        case 'visit': {
+          const what = FARM_DECOR.find((d) => d.id === fx.text);
+          if (what && !this.visited.has(what.id)) {
+            this.visited.add(what.id);
+            this.events.push({ type: 'toast', text: what.id === 'sugar' ? 'The ants found the sugar castle! They are tasting it with their feelers.' : `An ant went up to explore the ${what.label.toLowerCase()}.` });
+          }
+          break;
+        }
       }
     }
     m.fx.length = 0;

@@ -343,4 +343,21 @@ describe('animals use their decorations', () => {
     m.s.decor.splice(0, 1, { id: 'log', x: 250, y: CAGE_DECOR_AREAS[1].y });
     expect(m.log()).toBeUndefined();
   });
+
+  test('ants go up to explore decorations on the surface, and find the sugar castle', () => {
+    const h = new AntHabitat(null, 9);
+    h.name = 'Antsville';
+    const m = h.model;
+    m.s.workers = 30;
+    m.s.decor.push({ id: 'sugar', x: 240, y: 29 });
+    let near = 0;
+    const told: string[] = [];
+    for (let i = 0; i < 60 * 600; i++) {
+      h.update(1 / 60, 1 / 60, DAY);
+      for (const e of h.drainEvents()) if (e.type === 'toast') told.push(e.text);
+      if (m.ants.some((a) => a.task === 'visit' && a.step === 1 && Math.abs(a.x - 240) < 8)) near++;
+    }
+    expect(near).toBeGreaterThan(60);
+    expect(told.filter((t) => t.includes('sugar castle'))).toHaveLength(1);
+  });
 });

@@ -1,7 +1,7 @@
 import type { Env } from '../../core/time';
 import { ANTS, EDGES, FARM, JOBS, NODES, POLY, polyPrefix, type Colony, type Pt } from './model';
 
-export type AntTask = 'idle' | 'dig' | 'forage' | 'nurse' | 'look';
+export type AntTask = 'idle' | 'dig' | 'forage' | 'nurse' | 'look' | 'visit';
 export type Carry = null | 'grain' | 'food' | 'egg';
 
 /** One visible worker. Ants are not saved; they are re-spawned from the worker count. */
@@ -27,6 +27,8 @@ export interface Ant {
   digging: boolean;
   /** Each ant keeps to its own side of the tunnel. */
   lane: number;
+  /** The decoration it has gone up to look at, if any. */
+  visiting?: string;
 }
 
 const BASE_SPEED = 15;
@@ -120,6 +122,16 @@ function assign(c: Colony, ant: Ant): void {
     return;
   }
 
+  // a decoration up on the surface is worth a look
+  if (c.s.decor.length && rng.chance(0.1)) {
+    const d = rng.pick(c.s.decor);
+    ant.task = 'visit';
+    ant.foodId = -1;
+    goTo(c, ant, 0, [{ x: d.x + rng.range(-5, 5), y: FARM.surface - 1 }]);
+    ant.visiting = d.id;
+    return;
+  }
+
   ant.task = 'idle';
   if (rng.chance(0.18)) {
     // a scout has a wander about on the surface
@@ -179,6 +191,7 @@ function advance(c: Colony, ant: Ant): void {
     default:
       if (ant.step === 0) {
         ant.wait = ant.task === 'look' ? rng.range(2, 3) : rng.range(2, 8);
+        if (ant.task === 'visit' && ant.visiting) c.emit('visit', ant.x, ant.y, ant.visiting);
         ant.step = 1;
       } else assign(c, ant);
   }

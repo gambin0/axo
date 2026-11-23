@@ -171,11 +171,12 @@ export interface SurfaceFood {
   bad: number;
 }
 
-export type AntFxKind = 'dust' | 'no' | 'hatch' | 'drop' | 'crumb' | 'tap' | 'plop' | 'stage';
+export type AntFxKind = 'dust' | 'no' | 'hatch' | 'drop' | 'crumb' | 'tap' | 'plop' | 'stage' | 'visit';
 export interface AntFx {
   kind: AntFxKind;
   x: number;
   y: number;
+  text?: string;
 }
 
 export interface ColonyState {
@@ -265,8 +266,8 @@ export class Colony {
     return JSON.parse(JSON.stringify(this.s));
   }
 
-  emit(kind: AntFxKind, x: number, y: number): void {
-    if (this.fx.length < 80) this.fx.push({ kind, x, y });
+  emit(kind: AntFxKind, x: number, y: number, text?: string): void {
+    if (this.fx.length < 80) this.fx.push({ kind, x, y, text });
   }
 
   // ---- derived -----------------------------------------------------------
