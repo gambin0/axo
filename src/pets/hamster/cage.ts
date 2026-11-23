@@ -185,6 +185,9 @@ export class CageHabitat implements Habitat {
           this.particles.spawn('zzz', fx.x, fx.y);
           once('wake', `${n} was asleep! Hamsters sleep in the day and play at night.`);
           break;
+        case 'log':
+          once('log', `${this.who()} ran into the log! Hamsters love a tunnel to hide in.`);
+          break;
         case 'notyet':
           once('notyet', `${n} isn't ready to take food from your hand yet, so it went on the floor. Keep visiting!`);
           break;
@@ -791,6 +794,14 @@ export class CageHabitat implements Habitat {
     const pose = this.pose(time);
     if (s.state === 'climb' && m.finger) this.drawFinger(sf, m.finger);
     if (pose) drawHamster(sf, pose);
+    const log = s.state === 'log' ? m.log() : undefined;
+    if (log && Math.sin(time * 1.7) > -0.5) {
+      // eyes peeping out of the end of the log
+      for (const dx of [-12, -8]) {
+        sf.px(log.x + dx, GROUND - 6, 0x140c08);
+        sf.px(log.x + dx, GROUND - 7, 0xffffff);
+      }
+    }
     if (s.state === 'hide') {
       // eyes glinting in the doorway
       if (Math.sin(time * 1.3) > -0.6) {
@@ -829,7 +840,7 @@ export class CageHabitat implements Habitat {
   /** How the hamster looks right now, or null when it is hidden. */
   private pose(time: number) {
     const m = this.model, s = m.s;
-    if (s.state === 'hide') return null;
+    if (s.state === 'hide' || s.state === 'log') return null;
     let pose: HamPoseName = 'sit';
     let x = s.x, y = s.y, face = s.facing;
     let holding = 0;

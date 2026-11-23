@@ -74,7 +74,7 @@ export const HAM = {
 
 export type Behavior =
   | 'idle' | 'walk' | 'stuff' | 'hoard' | 'eat' | 'drink' | 'wheel' | 'groom' | 'bath' | 'chew' | 'dig' | 'sleep' | 'wake'
-  | 'sniff' | 'climb' | 'hide' | 'refuse' | 'tube';
+  | 'sniff' | 'climb' | 'hide' | 'refuse' | 'tube' | 'log';
 
 export type Dest =
   | { kind: 'surface'; x: number }
@@ -130,7 +130,7 @@ export interface HamsterState {
 
 export type HamFxKind =
   | 'heart' | 'no' | 'sparkle' | 'dust' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'plop' | 'stuff' | 'hoard' | 'squeak'
-  | 'unlock' | 'dug' | 'startle' | 'sweets' | 'handfed' | 'climb' | 'wake' | 'notyet';
+  | 'unlock' | 'dug' | 'startle' | 'sweets' | 'handfed' | 'climb' | 'wake' | 'notyet' | 'log';
 export interface HamFx {
   kind: HamFxKind;
   x: number;
@@ -365,7 +365,7 @@ export class Hamster {
       return 'refused';
     }
     const near = !this.underground() && Math.abs(x - s.x) < 30 && !this.asleep();
-    if (near && this.can('hand') && s.state !== 'hide') {
+    if (near && this.can('hand') && s.state !== 'hide' && s.state !== 'log') {
       this.go('eat', 0);
       s.state = 'eat';
       s.timer = 4;
@@ -398,7 +398,7 @@ export class Hamster {
     const s = this.s;
     const tall = s.state === 'eat' || s.state === 'drink' || s.state === 'groom' || s.state === 'wake' || s.state === 'sniff' ? 36 : 22;
     if (s.state === 'wheel') return Math.hypot(x - WHEEL.x, y - (WHEEL.y + WHEEL.r - 12)) < 16;
-    if (s.state === 'hide') return false;
+    if (s.state === 'hide' || s.state === 'log') return false;
     return Math.abs(x - s.x) < 20 && y > s.y - tall - 4 && y < s.y + 4;
   }
 
@@ -646,6 +646,12 @@ export class Hamster {
       this.goTo({ kind: 'surface', x: SPOT.wheel }, 'wheel');
       return;
     }
+    // a log on the bedding is a tunnel to run through
+    const log = this.log();
+    if (log && !this.underground() && this.rng.chance(0.12)) {
+      this.goTo({ kind: 'surface', x: log.x - 12 }, 'log');
+      return;
+    }
     const r = this.rng.next();
     if (r < 0.15 && s.bottle > 0.03) this.goTo({ kind: 'surface', x: SPOT.bottle }, 'drink');
     else if (r < 0.28) this.go('groom', this.rng.range(2.5, 4));
@@ -654,6 +660,11 @@ export class Hamster {
     else if (r < 0.56 && this.can('tube') && !this.underground()) this.goTo({ kind: 'surface', x: TUBE.a - 4 }, 'tube');
     else if (r < 0.7 && this.job() >= 0) this.goTo({ kind: 'front' }, 'dig');
     else this.goTo({ kind: 'surface', x: this.rng.range(CAGE.left + 20, SPOT.bottle - 10) }, 'idle');
+  }
+
+  /** The log, if it is out on the bedding where the hamster can get to it (not along the front). */
+  log(): Placed | undefined {
+    return this.s.decor.find((d) => d.id === 'log' && d.y === GROUND);
   }
 
   private goToSleep(): void {
@@ -710,6 +721,16 @@ export class Hamster {
         break;
       case 'hide':
         this.go('hide', 8);
+        break;
+      case 'log':
+        // in at the open end, if the log is still there
+        if (!this.log()) {
+          this.go('idle', 0.5);
+          break;
+        }
+        s.facing = 1;
+        this.go('log', this.rng.range(4, 9));
+        this.emit('log', s.x + 4, s.y - 10);
         break;
       case 'tube':
         this.path = tubePath().slice(1);
@@ -806,6 +827,16 @@ export class Hamster {
         if (this.rng.chance(dt * 0.15)) this.emit('zzz', s.x + 6, s.y - 20);
         if (s.timer <= 0 || (this.nightTime(env) && this.rng.chance(dt * 0.02))) this.go('wake', 2.5);
         break;
+      case 'log': {
+        // out of the far end of the log; at once if the log is moved or put away
+        const log = this.log();
+        if (s.timer <= 0 || !log) {
+          if (log) s.x = clamp(log.x + 17, CAGE.left + 20, SPOT.bottle - 10);
+          s.facing = 1;
+          this.go('idle', 1.5);
+        }
+        break;
+      }
       case 'wake':
       case 'groom':
       case 'drink':

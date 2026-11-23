@@ -319,4 +319,28 @@ describe('animals use their decorations', () => {
     for (let i = 0; i < 60 * 3; i++) h.update(1 / 60, 1 / 60, DAY);
     expect(m.lead.s.y).toBe(GROUND);
   });
+
+  test('the hamster runs into a log on the bedding and comes out the far end, but cannot reach one at the front', () => {
+    const h = new CageHabitat(null, 8);
+    h.name = 'Peanut';
+    const m = h.model;
+    // awake and playful: evening, plenty of food and water, not wanting the wheel
+    const EVE = envAt(21);
+    m.s.decor.push({ id: 'log', x: 72, y: CAGE_DECOR_AREAS[0].y });
+    let inside = 0, outFar = 0;
+    let was = '';
+    for (let i = 0; i < 60 * 400; i++) {
+      Object.assign(m.s, { fullness: 100, bowl: 0, energy: 10, bottle: 1 });
+      h.update(1 / 60, 1 / 60, EVE);
+      if (m.s.state === 'log') inside++;
+      if (was === 'log' && m.s.state !== 'log' && m.s.x > 80) outFar++;
+      was = m.s.state;
+    }
+    expect(inside).toBeGreaterThan(60 * 4);
+    expect(outFar).toBeGreaterThan(0);
+    expect(h.drainEvents().some((e) => e.type === 'toast' && e.text.includes('ran into the log'))).toBe(true);
+    // the same log along the front is out of reach
+    m.s.decor.splice(0, 1, { id: 'log', x: 250, y: CAGE_DECOR_AREAS[1].y });
+    expect(m.log()).toBeUndefined();
+  });
 });
