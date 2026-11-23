@@ -361,6 +361,13 @@ canvas {
   margin: 0;
   color: var(--muted);
 }
+/* one pet's news in the "while you were away" report: big enough to read along, tap to hear */
+.sheet p.news {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.45;
+  cursor: pointer;
+}
 .sheet input[type='text'] {
   font: inherit;
   font-size: 20px;

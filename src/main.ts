@@ -21,6 +21,8 @@ import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
 
 interface PetInfo {
   title: string;
+  /** Shown beside the pet's news. */
+  icon: string;
   kind: string;
   defaultName: string;
   ask: string;
@@ -30,39 +32,39 @@ interface PetInfo {
 /** Every pet in the app. Adding one here is all the shell needs. */
 const PETS: Record<PetId, PetInfo> = {
   axolotl: {
-    title: 'Aquarium', kind: 'axolotl', defaultName: 'Mochi', ask: 'What will you call your axolotl?',
+    icon: '🦎', title: 'Aquarium', kind: 'axolotl', defaultName: 'Mochi', ask: 'What will you call your axolotl?',
     create: (saved, seed) => new AxolotlHabitat(saved, seed),
   },
   ants: {
-    title: 'Ant Farm', kind: 'ant colony', defaultName: 'Antsville', ask: 'What will you call your ant colony?',
+    icon: '🐜', title: 'Ant Farm', kind: 'ant colony', defaultName: 'Antsville', ask: 'What will you call your ant colony?',
     create: (saved, seed) => new AntHabitat(saved, seed),
   },
   butterfly: {
-    title: 'Butterfly Jar', kind: 'butterfly jar', defaultName: 'Flutter', ask: 'What will you call your caterpillar?',
+    icon: '🦋', title: 'Butterfly Jar', kind: 'butterfly jar', defaultName: 'Flutter', ask: 'What will you call your caterpillar?',
     create: (saved, seed) => new ButterflyHabitat(saved, seed),
   },
   pond: {
-    title: 'Tadpole Pond', kind: 'pond', defaultName: 'Lily Pond', ask: 'What will you call your pond?',
+    icon: '🐸', title: 'Tadpole Pond', kind: 'pond', defaultName: 'Lily Pond', ask: 'What will you call your pond?',
     create: (saved, seed) => new PondHabitat(saved, seed),
   },
   crab: {
-    title: 'Hermit Crab', kind: 'hermit crab', defaultName: 'Pinchy', ask: 'What will you call your hermit crab?',
+    icon: '🦀', title: 'Hermit Crab', kind: 'hermit crab', defaultName: 'Pinchy', ask: 'What will you call your hermit crab?',
     create: (saved, seed) => new CrabHabitat(saved, seed),
   },
   snail: {
-    title: 'Snail Garden', kind: 'snail terrarium', defaultName: 'Mossy', ask: 'What will you call your snail garden?',
+    icon: '🐌', title: 'Snail Garden', kind: 'snail terrarium', defaultName: 'Mossy', ask: 'What will you call your snail garden?',
     create: (saved, seed) => new TerrariumHabitat(saved, seed),
   },
   bees: {
-    title: 'Beehive', kind: 'beehive', defaultName: 'Honeycomb', ask: 'What will you call your beehive?',
+    icon: '🐝', title: 'Beehive', kind: 'beehive', defaultName: 'Honeycomb', ask: 'What will you call your beehive?',
     create: (saved, seed) => new HiveHabitat(saved, seed),
   },
   hamster: {
-    title: 'Hamster Cage', kind: 'hamster', defaultName: 'Peanut', ask: 'What will you call your hamster?',
+    icon: '🐹', title: 'Hamster Cage', kind: 'hamster', defaultName: 'Peanut', ask: 'What will you call your hamster?',
     create: (saved, seed) => new CageHabitat(saved, seed),
   },
   chicken: {
-    title: 'Chicken Coop', kind: 'chicken', defaultName: 'Nugget', ask: 'What will you call your chick?',
+    icon: '🐔', title: 'Chicken Coop', kind: 'chicken', defaultName: 'Nugget', ask: 'What will you call your chick?',
     create: (saved, seed) => new CoopHabitat(saved, seed),
   },
 };
@@ -111,14 +113,56 @@ function persist(): void {
 /** Simulate time the app was closed or hidden, and say what happened. */
 function catchUp(seconds: number): void {
   if (seconds <= 0) return;
-  const lines: string[] = [];
-  for (const h of Object.values(habitats)) {
+  const news: string[] = [];
+  for (const id of PET_IDS) {
+    const h = habitats[id];
     if (!h.name) continue;
     const report = h.beginCatchup();
     runCatchup(h, seconds, clock.hour());
-    lines.push(...report());
+    const lines = report();
+    if (lines.length) news.push(`${PETS[id].icon} ${petIntro(id)}: ${lines.join(', ')}.`);
   }
-  if (lines.length && seconds > 600) toasts.show(`While you were away… ${lines.join(', ')}.`, 6000);
+  if (news.length && seconds > 600) awayDialog(news);
+}
+
+/** What happened while away, kept for as long as the report is open, so a later catch-up adds to it. */
+let awayNews: string[] = [];
+let awayOpen: { close(): void } | null = null;
+
+/**
+ * The "while you were away" report. It stays up until it is closed, so a child can read along
+ * at their own pace. Each line is read aloud in turn and can be tapped to hear it again.
+ */
+function awayDialog(news: string[]): void {
+  awayOpen?.close();
+  awayNews = [...awayNews, ...news];
+  const head = 'While you were away…';
+  const h = readable(head);
+  const lines = awayNews.map((text) => {
+    const r = readable(text);
+    return { text, marks: r.marks, node: el('p', { class: 'news', onpointerdown: () => (unlock(), hear(text, r.marks)) }, r.node) };
+  });
+  const readAll = () => {
+    speaker.sayNow(head, h.marks);
+    for (const l of lines) speaker.say(l.text, l.marks);
+  };
+  const close = () => {
+    speaker.stop();
+    dlg.close();
+    awayOpen = null;
+    awayNews = [];
+    maybeUpdate();
+  };
+  const dlg = dialog(
+    el('h3', { onpointerdown: () => (unlock(), hear(head, h.marks)) }, h.node),
+    ...lines.map((l) => l.node),
+    el('button', { class: 'plain', type: 'button', onclick: () => (unlock(), readAll()) }, '🔊 Read it to me'),
+    el('button', { class: 'big', type: 'button', onclick: close }, 'OK!'),
+  );
+  dlg.onDismiss = close;
+  awayOpen = dlg;
+  // browsers may not speak before the first tap; the button is there for that
+  readAll();
 }
 
 // ---- screens -------------------------------------------------------------
