@@ -19,6 +19,8 @@ export const SLOT_X = [166, 194, 222, 250, 278, 304] as const;
 export const FEEDER = { x: 146 };
 /** Index used for the sugar-water feeder wherever a flower index is expected. */
 export const FEEDER_ID = 6;
+/** How tall each decoration is, so a bee can land on top. */
+export const DECOR_HEIGHT: Record<string, number> = { stones: 7, can: 14, toadstool: 14, gnome: 22 };
 
 /** Centre of cell i. Pointy-top hexagons, odd rows shifted half a cell. */
 export const cellPos = (i: number): Pt => ({ x: 17 + (i % COLS) * 11 + (Math.floor(i / COLS) % 2) * 5.5, y: 24 + Math.floor(i / COLS) * 9.5 });
@@ -131,11 +133,12 @@ export interface HiveState {
   combFixed?: boolean;
 }
 
-export type HiveFxKind = 'ripple' | 'sparkle' | 'drop' | 'plop' | 'pop' | 'emerge' | 'stage' | 'dance' | 'wilt' | 'jar' | 'buzz' | 'no' | 'honey' | 'build' | 'first';
+export type HiveFxKind = 'ripple' | 'sparkle' | 'drop' | 'plop' | 'pop' | 'emerge' | 'stage' | 'dance' | 'wilt' | 'jar' | 'buzz' | 'no' | 'honey' | 'build' | 'first' | 'visit';
 export interface HiveFx {
   kind: HiveFxKind;
   x: number;
   y: number;
+  text?: string;
 }
 
 export type BeeRole = 'forager' | 'house' | 'guard';
@@ -159,6 +162,8 @@ export interface Bee {
   /** Wobble phase for flight and wing flaps. */
   ph: number;
   cell: number;
+  /** Flying to, or sitting on, a decoration for a rest on the way home. */
+  rest?: boolean;
 }
 
 export interface QueenBee {
@@ -256,8 +261,8 @@ export class Hive {
     return JSON.parse(JSON.stringify(this.s));
   }
 
-  emit(kind: HiveFxKind, x: number, y: number): void {
-    if (this.fx.length < 60) this.fx.push({ kind, x, y });
+  emit(kind: HiveFxKind, x: number, y: number, text?: string): void {
+    if (this.fx.length < 60) this.fx.push({ kind, x, y, text });
   }
 
   // ---- derived -----------------------------------------------------------
@@ -776,7 +781,13 @@ export class Hive {
         b.x = b.sx + (b.tx - b.sx) * b.p + (-(b.ty - b.sy) / len) * wob;
         b.y = b.sy + (b.ty - b.sy) * b.p + ((b.tx - b.sx) / len) * wob;
         b.face = b.tx >= b.sx ? 1 : -1;
-        if (b.p >= 1) {
+        if (b.p >= 1 && b.rest) {
+          // landed on a decoration for a breather; keeps whatever it is carrying
+          b.state = 'sit';
+          b.timer = this.rng.range(2, 3.5);
+          const d = this.s.decor.find((it) => Math.abs(it.x - b.x) < 2);
+          if (d) this.emit('visit', b.x, b.y, d.id);
+        } else if (b.p >= 1) {
           b.state = 'sit';
           b.timer = this.rng.range(1.2, 2);
           if (this.takeNectar(b.flower)) {
@@ -790,7 +801,18 @@ export class Hive {
         break;
       }
       case 'sit':
-        if (b.timer <= 0) {
+        if (b.timer <= 0 && !b.rest && this.s.decor.length && this.rng.chance(0.2)) {
+          // on the way home, a rest on top of one of the garden's decorations
+          const d = this.rng.pick(this.s.decor);
+          b.rest = true;
+          b.state = 'out';
+          b.sx = b.x;
+          b.sy = b.y;
+          b.tx = d.x;
+          b.ty = d.y - (DECOR_HEIGHT[d.id] ?? 8) - 1;
+          b.p = 0;
+        } else if (b.timer <= 0) {
+          b.rest = false;
           b.state = 'home';
           b.sx = b.x;
           b.sy = b.y;

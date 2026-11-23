@@ -360,4 +360,29 @@ describe('animals use their decorations', () => {
     expect(near).toBeGreaterThan(60);
     expect(told.filter((t) => t.includes('sugar castle'))).toHaveLength(1);
   });
+
+  test('a forager stops for a rest on a garden decoration on the way home, still carrying its nectar', () => {
+    const h = new HiveHabitat(null, 10);
+    h.name = 'Honeycomb';
+    const m = h.model;
+    m.s.workers = 40;
+    m.s.flowers = m.s.flowers.map((_, i) => ({ kind: i % 3, nectar: 8, age: 0, water: 1 }));
+    m.s.decor.push({ id: 'gnome', x: 200, y: 176 });
+    let rested = 0, carrying = 0;
+    const told: string[] = [];
+    for (let i = 0; i < 60 * 300; i++) {
+      m.s.flowers.forEach((f) => f && (f.nectar = 8));
+      h.update(1 / 60, 1 / 60, DAY);
+      for (const e of h.drainEvents()) if (e.type === 'toast') told.push(e.text);
+      for (const b of m.bees)
+        if (b.rest && b.state === 'sit') {
+          rested++;
+          expect(Math.abs(b.x - 200)).toBeLessThan(2);
+          if (b.load > 0) carrying++;
+        }
+    }
+    expect(rested).toBeGreaterThan(60);
+    expect(carrying).toBeGreaterThan(0);
+    expect(told.filter((t) => t.includes('garden gnome'))).toHaveLength(1);
+  });
 });

@@ -136,6 +136,11 @@ export class HiveHabitat implements Habitat {
         case 'first':
           once('first', 'A forager brought nectar home. Watch it go into a cell!');
           break;
+        case 'visit': {
+          const what = HIVE_DECOR.find((d) => d.id === fx.text);
+          if (what) once(`visit:${what.id}`, `A bee stopped for a rest on the ${what.label.toLowerCase()}!`);
+          break;
+        }
       }
     }
     m.fx.length = 0;

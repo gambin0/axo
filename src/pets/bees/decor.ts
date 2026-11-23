@@ -1,6 +1,7 @@
 import { hash2 } from '../../core/rng';
 import { dither, mix, type Surface } from '../../render/surface';
 import type { DecorArea, DecorItem } from '../decor';
+import { DECOR_HEIGHT } from './model';
 
 const STONE = [0x6a6a70, 0x8a8a90, 0xaaaab0, 0xcacad0];
 const TIN = [0x3a6a7a, 0x4e8aa0, 0x6aaac0, 0x9ad0e0];
@@ -19,7 +20,7 @@ function shadow(sf: Surface, x: number, y: number, w: number): void {
 
 export const HIVE_DECOR: DecorItem[] = [
   {
-    id: 'stones', icon: '🪨', label: 'Stepping stones', w: 36, h: 7, need: 0,
+    id: 'stones', icon: '🪨', label: 'Stepping stones', w: 36, h: DECOR_HEIGHT.stones, need: 0,
     draw(sf, x, y) {
       // three flat stones in a row, a little apart
       for (const [ox, rx] of [[-12, 6], [0, 5], [12, 6]] as const)
@@ -32,7 +33,7 @@ export const HIVE_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'can', icon: '🚿', label: 'Watering can', w: 22, h: 14, need: 20,
+    id: 'can', icon: '🚿', label: 'Watering can', w: 22, h: DECOR_HEIGHT.can, need: 20,
     draw(sf, x, y) {
       shadow(sf, x, y, 10);
       // the body, a little drum
@@ -54,7 +55,7 @@ export const HIVE_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'toadstool', icon: '🍄', label: 'Toadstool', w: 16, h: 14, need: 45,
+    id: 'toadstool', icon: '🍄', label: 'Toadstool', w: 16, h: DECOR_HEIGHT.toadstool, need: 45,
     draw(sf, x, y) {
       shadow(sf, x, y, 7);
       // a stalk, and a red cap with white spots
@@ -70,7 +71,7 @@ export const HIVE_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'gnome', icon: '🧙', label: 'Garden gnome', w: 14, h: 22, need: 80,
+    id: 'gnome', icon: '🧙', label: 'Garden gnome', w: 14, h: DECOR_HEIGHT.gnome, need: 80,
     draw(sf, x, y, time) {
       shadow(sf, x, y, 6);
       // boots and a blue coat with a belt
