@@ -142,6 +142,15 @@ export class PondHabitat implements Habitat {
           break;
         case 'leaf':
           break;
+        case 'arch':
+          this.particles.spawn('bubble', fx.x, fx.y - 4);
+          once('arch', 'A tadpole is swimming through the rock arch!');
+          break;
+        case 'visit': {
+          const what = POND_DECOR.find((d) => d.id === fx.text);
+          if (what) once(`visit:${what.id}`, `A tadpole swam over to look at the ${what.label.toLowerCase()}.`);
+          break;
+        }
       }
     }
     m.fx.length = 0;
@@ -529,7 +538,6 @@ export class PondHabitat implements Habitat {
 
     // decorations on the bottom, behind the swimmers
     this.decorBox.draw(sf, time);
-    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     // food and fallen leaves
     for (const f of s.foods) {
@@ -595,6 +603,9 @@ export class PondHabitat implements Habitat {
       }
     }
 
+    // the front of the decorations (the rock arch) goes over the swimmers
+    this.decorBox.drawFront(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     this.particles.render(sf);
 
     // murk, then the shimmering water line

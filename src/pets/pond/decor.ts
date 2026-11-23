@@ -1,6 +1,7 @@
 import { hash2 } from '../../core/rng';
 import { dither, mix, type Surface } from '../../render/surface';
 import type { DecorArea, DecorItem } from '../decor';
+import { DECOR_HEIGHT } from './model';
 
 const ROCK = [0x4a5048, 0x626a5e, 0x7e8876, 0x9aa890];
 const MOSS = [0x2e5a2a, 0x3e7a34, 0x5a9a44];
@@ -11,8 +12,11 @@ export const POND_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 216, y: 160 }];
 
 export const POND_DECOR: DecorItem[] = [
   {
-    id: 'arch', icon: '🪨', label: 'Rock arch', w: 30, h: 20, need: 0,
-    draw(sf, x, y) {
+    id: 'arch', icon: '🪨', label: 'Rock arch', w: 30, h: DECOR_HEIGHT.arch, need: 0,
+    draw() {
+      // all of the arch is drawn in front, so a tadpole swimming through shows only in the opening
+    },
+    front(sf, x, y) {
       // two mossy stone legs and a curved top, with a gap to swim through
       for (let dy = 0; dy < 20; dy++)
         for (let dx = -15; dx <= 15; dx++) {
@@ -25,7 +29,7 @@ export const POND_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'anchor', icon: '⚓', label: 'Anchor', w: 20, h: 20, need: 22,
+    id: 'anchor', icon: '⚓', label: 'Anchor', w: 20, h: DECOR_HEIGHT.anchor, need: 22,
     draw(sf, x, y) {
       // a little iron anchor lying a touch tilted in the mud
       for (let dy = 3; dy < 18; dy++) {
@@ -51,7 +55,7 @@ export const POND_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'boot', icon: '🥾', label: 'Old boot', w: 20, h: 16, need: 42,
+    id: 'boot', icon: '🥾', label: 'Old boot', w: 20, h: DECOR_HEIGHT.boot, need: 42,
     draw(sf, x, y, time) {
       // a sunken wellington: the leg up, the foot pointing right, a bubble sometimes
       for (let dy = 0; dy < 16; dy++)
@@ -69,7 +73,7 @@ export const POND_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'diver', icon: '🤿', label: 'Toy diver', w: 14, h: 22, need: 70,
+    id: 'diver', icon: '🤿', label: 'Toy diver', w: 14, h: DECOR_HEIGHT.diver, need: 70,
     draw(sf, x, y, time) {
       // an old-fashioned diving toy: brass helmet with a round window, a yellow suit, heavy boots
       const bob = Math.round(Math.sin(time * 1.2));

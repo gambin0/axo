@@ -259,4 +259,32 @@ describe('animals use their decorations', () => {
     expect(told.length).toBeGreaterThanOrEqual(1);
     expect(new Set(told).size).toBe(told.length);
   });
+
+  test('tadpoles swim right through the rock arch, and come to look at other decorations', () => {
+    const h = new PondHabitat(null, 6);
+    h.name = 'Lily';
+    const m = h.model;
+    // a few grown tadpoles, well fed so they swim about rather than graze
+    m.s.frogs.forEach((f) => Object.assign(f, { dev: 1.5, fullness: 100, state: 'swim', timer: 0 }));
+    m.s.decor.push({ id: 'arch', x: 100, y: 160 }, { id: 'boot', x: 180, y: 160 });
+    let through = 0, crossed = 0;
+    const told: string[] = [];
+    const side = new Map<number, number>();
+    for (let i = 0; i < 60 * 300; i++) {
+      m.s.frogs.forEach((f) => (f.fullness = 100));
+      h.update(1 / 60, 1 / 60, DAY);
+      for (const e of h.drainEvents()) if (e.type === 'toast') told.push(e.text);
+      for (const f of m.s.frogs) {
+        // inside the opening: low down, between the arch's legs
+        if (Math.abs(f.x - 100) < 5 && f.y > 148) through++;
+        const now = Math.sign(f.x - 100);
+        if (f.y > 148 && side.has(f.id) && side.get(f.id) !== now) crossed++;
+        side.set(f.id, now);
+      }
+    }
+    expect(through).toBeGreaterThan(0);
+    expect(crossed).toBeGreaterThan(0);
+    expect(told.some((t) => t.includes('rock arch'))).toBe(true);
+    expect(told.some((t) => t.includes('old boot'))).toBe(true);
+  });
 });

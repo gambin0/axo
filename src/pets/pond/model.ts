@@ -26,6 +26,9 @@ export const PERCHES: readonly Pt[] = [
   { x: 284, y: Math.round(bankY(284)) },
 ];
 
+/** How tall each decoration is, so a tadpole can come and look at the top of it. */
+export const DECOR_HEIGHT: Record<string, number> = { arch: 20, anchor: 20, boot: 16, diver: 22 };
+
 export type FrogStage = 'egg' | 'tadpole' | 'hind' | 'front' | 'froglet' | 'frog';
 
 /** Development is measured in days of well-fed growth. */
@@ -96,6 +99,8 @@ export interface Frog {
   tongueX: number;
   tongueY: number;
   croak: number;
+  /** Where to swim next after the current target, when going through the rock arch. */
+  via?: Pt;
 }
 
 export interface PondFood {
@@ -133,11 +138,12 @@ export interface PondState {
   rng: number;
 }
 
-export type PondFxKind = 'hatch' | 'legs' | 'arms' | 'froglet' | 'frog' | 'spawn' | 'nibble' | 'plop' | 'splash' | 'croak' | 'snap' | 'heart' | 'ripple' | 'sparkle' | 'no' | 'leaf';
+export type PondFxKind = 'hatch' | 'legs' | 'arms' | 'froglet' | 'frog' | 'spawn' | 'nibble' | 'plop' | 'splash' | 'croak' | 'snap' | 'heart' | 'ripple' | 'sparkle' | 'no' | 'leaf' | 'arch' | 'visit';
 export interface PondFx {
   kind: PondFxKind;
   x: number;
   y: number;
+  text?: string;
 }
 
 function newFrog(id: number, dev: number, rng: Rng): Frog {
@@ -205,8 +211,8 @@ export class Pond {
     return JSON.parse(JSON.stringify(this.s));
   }
 
-  emit(kind: PondFxKind, x: number, y: number): void {
-    if (this.fx.length < 60) this.fx.push({ kind, x, y });
+  emit(kind: PondFxKind, x: number, y: number, text?: string): void {
+    if (this.fx.length < 60) this.fx.push({ kind, x, y, text });
   }
 
   // ---- derived -----------------------------------------------------------
@@ -433,11 +439,35 @@ export class Pond {
           f.fullness = Math.min(100, f.fullness + bite * PONDCFG.algaeFood);
           f.tx = clamp(f.x + rng.range(-14, 14), POND.left + 10, 226);
         }
+      } else if (f.state === 'swim' && f.via && Math.hypot(f.tx - f.x, f.ty - f.y) < 4) {
+        // into the arch: now out the other side
+        f.tx = f.via.x;
+        f.ty = f.via.y;
+        f.via = undefined;
+        f.timer = 8;
+        this.emit('arch', f.x, f.y);
       } else if (f.state !== 'swim' || f.timer <= 0 || Math.hypot(f.tx - f.x, f.ty - f.y) < 4) {
         f.state = 'swim';
         f.timer = rng.range(2, 6);
-        f.tx = rng.range(POND.left + 8, 226);
-        f.ty = dark ? rng.range(POND.bottom - 26, POND.bottom - 6) : rng.range(POND.surface + 8, POND.bottom - 6);
+        f.via = undefined;
+        // now and then a tadpole goes to explore a decoration
+        const deco = !dark && s.decor.length && rng.chance(0.3) ? rng.pick(s.decor) : null;
+        if (deco?.id === 'arch') {
+          // swim right through the opening, from one side to the other
+          const side = rng.chance(0.5) ? 1 : -1;
+          f.tx = clamp(deco.x - side * 24, POND.left + 6, 230);
+          f.ty = POND.bottom - 4;
+          f.via = { x: clamp(deco.x + side * 26, POND.left + 6, 230), y: POND.bottom - 4 };
+          f.timer = 10;
+        } else if (deco) {
+          f.tx = clamp(deco.x + rng.range(-4, 4), POND.left + 6, 230);
+          f.ty = clamp(deco.y - (DECOR_HEIGHT[deco.id] ?? 10) - 4, POND.surface + 8, POND.bottom - 4);
+          f.timer = 8;
+          this.emit('visit', f.tx, f.ty, deco.id);
+        } else {
+          f.tx = rng.range(POND.left + 8, 226);
+          f.ty = dark ? rng.range(POND.bottom - 26, POND.bottom - 6) : rng.range(POND.surface + 8, POND.bottom - 6);
+        }
       }
       if (dark && f.state === 'swim') speed = 6;
     }
