@@ -2,8 +2,10 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawSpawn, drawTadpole, FROG_SPRITES } from './art';
+import { POND_DECOR, POND_DECOR_AREAS, pondPreviewBg } from './decor';
 import { aquatic, bankY, DEV, hops, PERCHES, POND, Pond, PONDCFG, newPondState, stageOf } from './model';
 
 const WATER = [0x7cc0a2, 0x5aa48c, 0x408873, 0x2e6c5c, 0x215347];
@@ -29,8 +31,18 @@ export class PondHabitat implements Habitat {
   private caught: number[] = [];
   private night = false;
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Pond.load(saved, seed) : new Pond(newPondState(seed));
+    // decorations are earned as the tadpoles grow up
+    this.decorBox = new DecorBox({
+      items: POND_DECOR, areas: POND_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.progress(), previewBg: pondPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -59,6 +71,11 @@ export class PondHabitat implements Habitat {
     const toast = (text: string) => this.toast(text);
     const sound = (name: Extract<UiEvent, { type: 'sound' }>['name']) => this.events.push({ type: 'sound', name });
     const once = (key: string, text: string) => this.once(key, text);
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('splash');
+      toast(unlockText(d));
+    }
+    this.decorBox.update(dt);
     if (m.s.cleanliness < PONDCFG.muckyBelow)
       once('mucky', 'The water is getting mucky! Pick the 🥅 net and sweep it over the leaves and old food to scoop them out.');
     for (const fx of m.fx) {
@@ -169,9 +186,13 @@ export class PondHabitat implements Habitat {
       m.finger = null;
       this.netAt = null;
       this.caught = [];
+      this.decorBox.pointer('up', x, y);
       return;
     }
     switch (this.tool) {
+      case 'decorate':
+        if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
+        break;
       case 'net': {
         // the net stays in the water: it can't be lifted above the surface or pushed into the bank
         const nx = clamp(x, POND.left + 4, 228), ny = clamp(y, POND.surface + 2, POND.bottom - 2);
@@ -197,12 +218,15 @@ export class PondHabitat implements Habitat {
       { id: 'lettuce', icon: '🥬', label: 'Lettuce', kind: 'drag' },
       { id: 'flies', icon: '🪰', label: 'Flies', kind: 'drag' },
       { id: 'net', icon: '🥅', label: 'Net', kind: 'mode' },
+      DECORATE_TOOL,
       { id: 'torch', icon: '🔦', label: 'Torch', kind: 'toggle', on: this.model.s.torch },
     ];
   }
 
   useTool(id: string): void {
     const m = this.model;
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     if (id === 'torch') {
       m.s.torch = !m.s.torch;
       if (!this.night) this.once('torch-day', 'The torch is for night-time. After dark it lights up the pond and wakes everyone up.');
@@ -502,6 +526,10 @@ export class PondHabitat implements Habitat {
           sf.px(fx + dx, fy + dy, c);
       }
     });
+
+    // decorations on the bottom, behind the swimmers
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     // food and fallen leaves
     for (const f of s.foods) {

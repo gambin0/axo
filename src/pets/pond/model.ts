@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -127,6 +128,8 @@ export interface PondState {
   leafClock: number;
   spawnClock: number;
   torch: boolean;
+  /** Decorations put out on the bottom of the pond. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -152,7 +155,7 @@ export function newPondState(seed: number, name = ''): PondState {
   for (let i = 0; i < PONDCFG.startEggs; i++) frogs.push(newFrog(i + 1, DEV.egg - (60 + i * 45) / DAY, rng));
   return {
     name, frogs, nextId: PONDCFG.startEggs + 1, foods: [], debris: [], algae: 60, cleanliness: 90,
-    leafClock: 0, spawnClock: 0, torch: false, rng: rng.s,
+    leafClock: 0, spawnClock: 0, torch: false, decor: [], rng: rng.s,
   };
 }
 
@@ -174,6 +177,14 @@ export class Pond {
     this.rng = new Rng(state.rng);
   }
 
+  /**
+   * How far the pond has come, for earning decorations: the most grown-up tadpole's days of
+   * growth, times ten. Back legs come at about 22, front legs at 42, the first frog at 70.
+   */
+  progress(): number {
+    return Math.max(0, ...this.s.frogs.map((f) => f.dev)) * 10;
+  }
+
   static load(raw: unknown, seed: number): Pond {
     const base = newPondState(seed);
     if (raw && typeof raw === 'object') {
@@ -183,6 +194,8 @@ export class Pond {
       base.frogs = Array.isArray(r.frogs) && r.frogs.length ? r.frogs : fresh;
       base.foods = Array.isArray(r.foods) ? r.foods : [];
       base.debris = Array.isArray(r.debris) ? r.debris : [];
+      // decorations are checked against the pond's list by the habitat
+      base.decor = savedDecor(r.decor);
     }
     return new Pond(base);
   }
