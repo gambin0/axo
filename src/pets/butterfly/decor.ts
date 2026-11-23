@@ -1,6 +1,7 @@
 import { hash2 } from '../../core/rng';
 import { dither, mix, type Surface } from '../../render/surface';
 import type { DecorArea, DecorItem } from '../decor';
+import { DECOR_HEIGHT } from './model';
 
 /**
  * Gaps along the jar's floor: either side of the orange slice, between the pot and the
@@ -28,7 +29,7 @@ function pebble(sf: Surface, x: number, y: number, rx: number, ry: number, ramp:
 
 export const JAR_DECOR: DecorItem[] = [
   {
-    id: 'pebble', icon: '🔵', label: 'Painted pebble', w: 14, h: 8, need: 0,
+    id: 'pebble', icon: '🔵', label: 'Painted pebble', w: 14, h: DECOR_HEIGHT.pebble, need: 0,
     draw(sf, x, y) {
       shadow(sf, x, y, 7);
       pebble(sf, x, y, 6, 4, [0x1e3a7a, 0x2a5aa8, 0x4a7ad0, 0x7aa4ec]);
@@ -38,7 +39,7 @@ export const JAR_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'pinecone', icon: '🌲', label: 'Pinecone', w: 10, h: 13, need: 15,
+    id: 'pinecone', icon: '🌲', label: 'Pinecone', w: 10, h: DECOR_HEIGHT.pinecone, need: 15,
     draw(sf, x, y) {
       shadow(sf, x, y, 5);
       // overlapping woody scales, widest near the bottom
@@ -53,7 +54,7 @@ export const JAR_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'shell', icon: '🐌', label: 'Spiral shell', w: 12, h: 10, need: 25,
+    id: 'shell', icon: '🐌', label: 'Spiral shell', w: 12, h: DECOR_HEIGHT.shell, need: 25,
     draw(sf, x, y) {
       shadow(sf, x, y, 6);
       // an empty snail shell: a spiral of cream and brown bands
@@ -68,7 +69,7 @@ export const JAR_DECOR: DecorItem[] = [
     },
   },
   {
-    id: 'ladybird', icon: '🐞', label: 'Ladybird rock', w: 14, h: 9, need: 30,
+    id: 'ladybird', icon: '🐞', label: 'Ladybird rock', w: 14, h: DECOR_HEIGHT.ladybird, need: 30,
     draw(sf, x, y, time) {
       shadow(sf, x, y, 7);
       // a stone painted like a ladybird: red back, black spots, a black head with white eyes

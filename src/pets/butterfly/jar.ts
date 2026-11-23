@@ -34,6 +34,8 @@ export class ButterflyHabitat implements Habitat {
   private trails = new Map<number, Pt[]>();
 
   private decorBox: DecorBox;
+  /** Decorations a butterfly has been seen resting on, so each is told once. */
+  private landed = new Set<string>();
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Jar.load(saved, seed) : new Jar(newJarState(seed));
@@ -133,6 +135,14 @@ export class ButterflyHabitat implements Habitat {
         case 'flutter':
           this.events.push({ type: 'sound', name: 'tap' });
           break;
+        case 'land': {
+          const what = JAR_DECOR.find((d) => d.id === fx.text);
+          if (what && !this.landed.has(what.id)) {
+            this.landed.add(what.id);
+            toast(`A butterfly is resting on the ${what.label.toLowerCase()}!`);
+          }
+          break;
+        }
       }
     }
     m.fx.length = 0;

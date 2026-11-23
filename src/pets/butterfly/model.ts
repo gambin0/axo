@@ -37,6 +37,9 @@ export const STEM_TOP = 32;
 export { stemX };
 
 export const FLOWER_X = [196, 232, 268] as const;
+
+/** How tall each decoration is, so a butterfly can settle on top of it. */
+export const DECOR_HEIGHT: Record<string, number> = { pebble: 8, pinecone: 13, shell: 10, ladybird: 9 };
 export const ORANGE_X = 58;
 
 /** All tuning lives here. Rates are per second of pet time. */
@@ -112,7 +115,7 @@ export interface JarState {
   rng: number;
 }
 
-export type JarFxKind = 'munch' | 'hatch' | 'moult' | 'pupate' | 'emerge' | 'heart' | 'mist' | 'sparkle' | 'egg' | 'plop' | 'no' | 'flutter';
+export type JarFxKind = 'munch' | 'hatch' | 'moult' | 'pupate' | 'emerge' | 'heart' | 'mist' | 'sparkle' | 'egg' | 'plop' | 'no' | 'flutter' | 'land';
 export interface JarFx {
   kind: JarFxKind;
   x: number;
@@ -520,8 +523,15 @@ export class Jar {
     return out;
   }
 
+  /** The tops of the decorations, where a butterfly likes to bask. */
+  decorPerches(): (Pt & { id: string })[] {
+    return this.s.decor.filter((d) => DECOR_HEIGHT[d.id]).map((d) => ({ id: d.id, x: d.x, y: d.y - DECOR_HEIGHT[d.id] - 3 }));
+  }
+
   private perchSomewhere(b: Bug): void {
-    const p = this.rng.pick(this.perches());
+    // decorations are picked a little more often than a leaf, since they are new and interesting
+    const tops = this.decorPerches();
+    const p = this.rng.pick([...this.perches(), ...tops, ...tops]);
     b.state = 'fly';
     b.tx = p.x;
     b.ty = p.y;
@@ -562,6 +572,8 @@ export class Jar {
         } else {
           b.state = 'perch';
           b.timer = dark ? 20 : rng.range(4, 12);
+          const top = this.decorPerches().find((t) => Math.abs(t.x - b.x) < 2 && Math.abs(t.y - b.y) < 2);
+          if (top) this.emit('land', b.x, b.y, top.id);
         }
       } else {
         const sp = 38 * dt;

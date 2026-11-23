@@ -239,3 +239,24 @@ describe('aquarium decorations', () => {
     expect(near).toBeGreaterThan(60 * 10);
   });
 });
+
+describe('animals use their decorations', () => {
+  test('butterflies settle on top of decorations, and the first landing on each is told', () => {
+    const h = new ButterflyHabitat(null, 5);
+    h.name = 'Flutter';
+    const m = h.model;
+    m.s.bugs.forEach((b) => Object.assign(b, { stage: 'fly', emerge: 1, fullness: 100, state: 'perch', timer: 0 }));
+    m.s.decor.push({ id: 'ladybird', x: 160, y: 160 }, { id: 'pinecone', x: 80, y: 160 });
+    let onTop = 0;
+    const told: string[] = [];
+    for (let i = 0; i < 60 * 240; i++) {
+      h.update(1 / 60, 1 / 60, DAY);
+      for (const e of h.drainEvents()) if (e.type === 'toast' && e.text.includes('resting on')) told.push(e.text);
+      const b = m.s.bugs[0];
+      if (b.state === 'perch' && m.decorPerches().some((t) => Math.abs(t.x - b.x) < 1 && Math.abs(t.y - b.y) < 1)) onTop++;
+    }
+    expect(onTop).toBeGreaterThan(60 * 5);
+    expect(told.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(told).size).toBe(told.length);
+  });
+});
