@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawBone, drawDropping, drawEggs, drawFood, drawSnail, drawSnailGlass } from './art';
+import { SNAIL_DECOR, SNAIL_DECOR_AREAS, snailPreviewBg } from './decor';
 import { BONE, BOX, groundY, SNAIL, STONE, Terrarium, newTerrariumState } from './model';
 
 const SOIL = [0x6a4c34, 0x543a26, 0x402c1c, 0x2e1e12];
@@ -34,8 +36,18 @@ export class TerrariumHabitat implements Habitat {
   private warnedDry = false;
   private toldFood = false;
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Terrarium.load(saved, seed) : new Terrarium(newTerrariumState(seed));
+    // decorations are earned as the snails grow
+    this.decorBox = new DecorBox({
+      items: SNAIL_DECOR, areas: SNAIL_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.progress(), previewBg: snailPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -57,6 +69,11 @@ export class TerrariumHabitat implements Habitat {
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     const sound = (name: Extract<UiEvent, { type: 'sound' }>['name']) => this.events.push({ type: 'sound', name });
 
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('pop');
+      toast(unlockText(d));
+    }
+    this.decorBox.update(dt);
     if (m.dry() && !this.warnedDry) {
       this.warnedDry = true;
       toast(`${this.who()} sealed themselves up because the air got dry. Tap 💦 to mist them!`);
@@ -156,6 +173,11 @@ export class TerrariumHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       m.finger = null;
+      this.decorBox.pointer('up', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (this.tool === 'tidy') {
@@ -179,12 +201,15 @@ export class TerrariumHabitat implements Habitat {
       { id: 'bone', icon: '🦴', label: 'Bone', kind: 'drag', disabled: m.s.cuttlebone > 0.8 },
       { id: 'salt', icon: '🧂', label: 'Salt', kind: 'drag' },
       { id: 'tidy', icon: '🧹', label: 'Tidy', kind: 'mode' },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
   }
 
   useTool(id: string): void {
     const m = this.model;
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     switch (id) {
       case 'mist':
         m.mist();
@@ -431,6 +456,9 @@ export class TerrariumHabitat implements Habitat {
 
     // floor snails first, then the ones on the front glass
     for (const sn of s.snails) if (sn.surface === 'floor') drawSnail(sf, sn, time, Math.sin(time * 2));
+    // decorations along the front of the soil; snails on the glass stay in front of them
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     for (const sn of s.snails) if (sn.surface === 'glass') drawSnailGlass(sf, sn);
 
     this.particles.render(sf);

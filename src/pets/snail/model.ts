@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 
 const HOUR = 3600, DAY = 86400;
 
@@ -109,6 +110,8 @@ export interface TerrariumState {
   moisture: number;
   droppings: number[];
   lamp: boolean;
+  /** Decorations put out on the soil. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -149,7 +152,7 @@ export function newTerrariumState(seed: number, name = ''): TerrariumState {
   b.timer = 5;
   return {
     name, snails: [a, b], nextId: 3, nextFood: 2, foods: [{ id: 1, x: 138, kind: 0, left: 1, age: 0 }], foodKind: 1, eggs: null, layTimer: 0,
-    cuttlebone: 1, moisture: 78, droppings: [], lamp: false, rng: rng.s,
+    cuttlebone: 1, moisture: 78, droppings: [], lamp: false, decor: [], rng: rng.s,
   };
 }
 
@@ -180,6 +183,8 @@ export class Terrarium {
       base.snails = Array.isArray(r.snails) && r.snails.length ? r.snails : base.snails;
       base.foods = Array.isArray(r.foods) ? r.foods : [];
       base.droppings = Array.isArray(r.droppings) ? r.droppings : [];
+      // decorations are checked against the terrarium's list by the habitat
+      base.decor = savedDecor(r.decor);
       for (const sn of base.snails) {
         // Resume somewhere sensible rather than mid-action.
         sn.state = 'idle';
@@ -217,6 +222,11 @@ export class Terrarium {
   adults(): Snail[] {
     return this.s.snails.filter((sn) => sn.growth >= 0.95);
   }
+  /** How far the colony has come, for earning decorations: growth of every snail added up, about two points a day of good care. */
+  progress(): number {
+    return this.s.snails.reduce((n, sn) => n + sn.growth, 0) * 20;
+  }
+
   /** Snails are most lively at night, when the lamp is on, or when the air is damp. */
   awake(env: Env): boolean {
     return env.night || this.s.lamp || this.s.moisture > 70;
