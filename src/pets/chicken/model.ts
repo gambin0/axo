@@ -1,7 +1,7 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { BREEDS } from './art';
-import type { Placed } from '../decor';
+import { savedDecor, type Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -822,7 +822,7 @@ export class Flock {
       state.droppings = r.droppings as number[];
     }
     // decorations are checked against the coop's list by the habitat
-    state.decor = Array.isArray(state.decor) ? state.decor.filter((d) => d && typeof d === 'object') : [];
+    state.decor = savedDecor(state.decor);
     state.droppings = Array.isArray(state.droppings) ? state.droppings.filter((d) => typeof d === 'number') : [];
     state.treats = Array.isArray(state.treats) ? state.treats.filter((t) => t && typeof t.x === 'number') : [];
     state.nextBird = Math.max(num(state.nextBird, 0), ...state.birds.map((b) => b.id + 1));

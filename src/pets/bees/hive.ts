@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { drawDomeLamp } from '../../render/glass';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawBee, drawCell, drawFeeder, drawFlower, drawJar, drawQueen } from './art';
+import { HIVE_DECOR, HIVE_DECOR_AREAS, hivePreviewBg } from './decor';
 import { BEE, cellPos, DANCE_SPOT, ENTR, FEEDER, FLOWERS, GROUND, Hive, HIVE, newHiveState, SLOT_X, type Bee } from './model';
 
 const GRASS = [0x6cc04a, 0x4ea03a, 0x388030, 0x286024];
@@ -30,8 +32,18 @@ export class HiveHabitat implements Habitat {
   private said = new Set<string>();
   private told = false;
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Hive.load(saved, seed) : new Hive(newHiveState(seed));
+    // decorations are earned as the colony grows
+    this.decorBox = new DecorBox({
+      items: HIVE_DECOR, areas: HIVE_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.workers, previewBg: hivePreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -57,6 +69,11 @@ export class HiveHabitat implements Habitat {
       this.said.add(key);
       toast(text);
     };
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('pop');
+      toast(unlockText(d));
+    }
+    this.decorBox.update(dt);
     if (!this.told && m.liveFlowers() <= 1 && m.s.workers < 12) {
       this.told = true;
       toast('Bees need flowers! Tap 🌻 then tap the garden to plant one.');
@@ -152,6 +169,10 @@ export class HiveHabitat implements Habitat {
 
   pointer(kind: 'down' | 'move' | 'up', x: number, y: number): void {
     const m = this.model;
+    if (this.tool === 'decorate' || this.decorBox.held) {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
+      return;
+    }
     if (kind !== 'down') return;
     if (Math.hypot(x - ENTR.x, y - ENTR.y) < 16) m.buzzGuards();
     else if (x < HIVE.right) m.tapHive(x, y);
@@ -167,6 +188,7 @@ export class HiveHabitat implements Habitat {
       { id: 'water', icon: '🚿', label: 'Water', kind: 'drag' },
       { id: 'sugar', icon: '🧃', label: 'Sugar', kind: 'drag', disabled: m.s.feeder > BEE.maxFeeder - 1 },
       { id: 'harvest', icon: '🍯', label: 'Honey', kind: 'action' },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
   }
@@ -174,6 +196,8 @@ export class HiveHabitat implements Habitat {
   useTool(id: string): void {
     const m = this.model;
     const toast = (text: string) => this.events.push({ type: 'toast', text });
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     switch (id) {
       case 'harvest':
         if (m.harvest()) break;
@@ -441,6 +465,9 @@ export class HiveHabitat implements Habitat {
       // an empty bed: a gentle hint, since planting is the main job
       for (const x of SLOT_X) for (let k = 0; k < 3; k++) sf.px(x - 2 + k * 2, GROUND - 2, 0x8a6a40);
     }
+    // decorations along the front of the garden
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     if (env.night) sf.multiply(0.5, 0.56, 0.78);
 
     // the hive layer: frame, comb, bees inside

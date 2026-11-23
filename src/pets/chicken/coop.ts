@@ -4,7 +4,7 @@ import { groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
-import { DecorBox } from '../decor';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
 import { BREEDS, drawChicken, drawEgg, type ChickPose, type ChickPoseName } from './art';
 import { COOP_DECOR, COOP_DECOR_AREAS, coopPreviewBg } from './decor';
 import {
@@ -69,15 +69,12 @@ export class CoopHabitat implements Habitat {
   private lastState = new Map<number, string>();
 
   private decorBox: DecorBox;
-  /** Decorations already unlocked, so a new one can be announced. */
-  private decorOpen: Set<string>;
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Flock.load(saved, seed) : new Flock(newFlockState(seed));
     this.decorBox = new DecorBox({
       items: COOP_DECOR, areas: COOP_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.friend, previewBg: coopPreviewBg,
     });
-    this.decorOpen = new Set(COOP_DECOR.filter((d) => this.decorBox.unlocked(d.id)).map((d) => d.id));
   }
 
   decor(): DecorPicker {
@@ -277,12 +274,10 @@ export class CoopHabitat implements Habitat {
     }
     m.fx.length = 0;
     // a decoration earned: say so
-    for (const d of COOP_DECOR)
-      if (!this.decorOpen.has(d.id) && this.decorBox.unlocked(d.id)) {
-        this.decorOpen.add(d.id);
-        sound('hatch');
-        toast(`New decoration: ${d.icon} ${d.label}! Tap 🎨 Decorate to put it out.`);
-      }
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('hatch');
+      toast(unlockText(d));
+    }
     this.decorBox.update(dt);
     for (const b of m.birds) {
       const st = b.s.state;
@@ -375,7 +370,7 @@ export class CoopHabitat implements Habitat {
     ];
     // once there is a hen, an egg from the nest box can go under the lamp to hatch
     if (m.hasHen() || s.nest.length) out.push({ id: 'egg', icon: '🥚', label: 'Hatch', kind: 'drag' });
-    out.push({ id: 'decorate', icon: '🎨', label: 'Decorate', kind: 'mode' });
+    out.push(DECORATE_TOOL);
     out.push({ id: 'light', icon: '💡', label: 'Light', kind: 'toggle', on: s.light });
     return out;
   }

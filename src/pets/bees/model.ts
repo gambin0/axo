@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 
 const HOUR = 3600, DAY = 86400;
 
@@ -123,6 +124,8 @@ export interface HiveState {
   /** Which flower the Plant tool puts down next. */
   nextKind: number;
   lamp: boolean;
+  /** Decorations put out in the garden. */
+  decor: Placed[];
   rng: number;
   /** Set once older saves have had their missing comb drawn out (comb used to stall part way). */
   combFixed?: boolean;
@@ -188,7 +191,7 @@ export function newHiveState(seed: number, name = ''): HiveState {
   set(8, 'nectar', 1);
   return {
     name, workers: 8, layCool: 0, buildCool: BEE.buildEvery, debt: 0, cells, combFixed: true,
-    flowers: [null, null, { kind: 0, nectar: 3, age: 0, water: 0 }, null, null, null], feeder: 0, jars: 0, nextKind: 1, lamp: false, rng: new Rng(seed).s,
+    flowers: [null, null, { kind: 0, nectar: 3, age: 0, water: 0 }, null, null, null], feeder: 0, jars: 0, nextKind: 1, lamp: false, decor: [], rng: new Rng(seed).s,
   };
 }
 
@@ -233,6 +236,8 @@ export class Hive {
       const fl = Array.isArray(r.flowers) ? r.flowers : [];
       base.flowers = Array.from({ length: SLOT_X.length }, (_, i) => (fl[i] ? { ...fl[i]! } : null));
       base.workers = clamp(Math.floor(base.workers) || 8, 1, BEE.maxWorkers);
+      // decorations are checked against the garden's list by the habitat
+      base.decor = savedDecor(r.decor);
       if (!r.combFixed) {
         // comb used to stop growing once empty cells piled up: draw out what this stage should have
         const h = new Hive(base);

@@ -4,7 +4,7 @@ import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
-import { DecorBox } from '../decor';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
 import { COATS, drawHamster, type HamPoseName } from './art';
 import { CAGE_DECOR, CAGE_DECOR_AREAS, cagePreviewBg } from './decor';
 import {
@@ -53,15 +53,12 @@ export class CageHabitat implements Habitat {
   private holding = false;
 
   private decorBox: DecorBox;
-  /** Decorations already unlocked, so a new one can be announced. */
-  private decorOpen: Set<string>;
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Hamster.load(saved, seed) : new Hamster(newHamsterState(seed));
     this.decorBox = new DecorBox({
       items: CAGE_DECOR, areas: CAGE_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.trust, previewBg: cagePreviewBg,
     });
-    this.decorOpen = new Set(CAGE_DECOR.filter((d) => this.decorBox.unlocked(d.id)).map((d) => d.id));
   }
 
   decor(): DecorPicker {
@@ -100,12 +97,10 @@ export class CageHabitat implements Habitat {
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     const sound = (name: Extract<UiEvent, { type: 'sound' }>['name']) => this.events.push({ type: 'sound', name });
     // a decoration earned: say so
-    for (const d of CAGE_DECOR)
-      if (!this.decorOpen.has(d.id) && this.decorBox.unlocked(d.id)) {
-        this.decorOpen.add(d.id);
-        sound('hatch');
-        toast(`New decoration: ${d.icon} ${d.label}! Tap 🎨 Decorate to put it out.`);
-      }
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('hatch');
+      toast(unlockText(d));
+    }
     this.decorBox.update(dt);
     const once = (key: string, text: string) => {
       if (this.said.has(key)) return;
@@ -258,7 +253,7 @@ export class CageHabitat implements Habitat {
       ...TREATS.slice(1).map((t, i) => ({ id: `treat:${i + 1}`, icon: t.icon, label: t.name.split(' ')[0], kind: 'drag' as const })),
       { id: 'water', icon: '💧', label: 'Water', kind: 'drag', disabled: s.bottle > 0.9 },
       { id: 'clean', icon: '🧹', label: 'Clean', kind: 'mode' },
-      { id: 'decorate', icon: '🎨', label: 'Decorate', kind: 'mode' },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: s.lamp },
     ];
   }

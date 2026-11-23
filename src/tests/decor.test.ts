@@ -3,9 +3,12 @@ import { describe, expect, test } from 'vitest';
 import { envAt } from '../core/time';
 import { COOP_DECOR, COOP_DECOR_AREAS } from '../pets/chicken/decor';
 import { CoopHabitat } from '../pets/chicken/coop';
-import { DecorBox, MAX_DECOR, type DecorItem, type Placed } from '../pets/decor';
+import { DecorBox, MAX_DECOR, type DecorArea, type DecorItem, type Placed } from '../pets/decor';
+import type { Habitat } from '../pets/types';
 import { CAGE_DECOR, CAGE_DECOR_AREAS } from '../pets/hamster/decor';
 import { CageHabitat } from '../pets/hamster/cage';
+import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
+import { HiveHabitat } from '../pets/bees/hive';
 import { Surface } from '../render/surface';
 import { encodePng } from './png';
 
@@ -20,6 +23,17 @@ function box(placed: Placed[] = [], level = 0, areas = [{ x0: 0, x1: 100, y: 50 
 
 const overlaps = (b: DecorBox) =>
   b.placed.some((p, i) => b.placed.some((q, j) => i < j && p.y === q.y && Math.abs(p.x - q.x) < (b.item(p.id)!.w + b.item(q.id)!.w) / 2));
+
+/** Every pet with decorations: how to make one, and how to give it progress. */
+const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; items: DecorItem[]; areas: DecorArea[]; earn: (h: Habitat, v: number) => void; prep?: (h: Habitat) => void }[] = [
+  {
+    name: 'coop', make: (s, n) => new CoopHabitat(s, n), items: COOP_DECOR, areas: COOP_DECOR_AREAS,
+    earn: (h, v) => ((h as CoopHabitat).model.s.friend = v),
+    prep: (h) => Object.assign((h as CoopHabitat).model.lead.s, { state: 'idle', grow: 9, x: 120, age: 9e5 }),
+  },
+  { name: 'cage', make: (s, n) => new CageHabitat(s, n), items: CAGE_DECOR, areas: CAGE_DECOR_AREAS, earn: (h, v) => ((h as CageHabitat).model.s.trust = v) },
+  { name: 'hive', make: (s, n) => new HiveHabitat(s, n), items: HIVE_DECOR, areas: HIVE_DECOR_AREAS, earn: (h, v) => ((h as HiveHabitat).model.s.workers = v) },
+];
 
 describe('decorations', () => {
   test('put out, and tapped again to put away', () => {
@@ -85,30 +99,30 @@ describe('decorations', () => {
 });
 
 describe('decorations in the coop and the cage', () => {
-  const setups = [
-    { name: 'coop', make: () => new CoopHabitat(null, 1), items: COOP_DECOR, areas: COOP_DECOR_AREAS, earn: (h: CoopHabitat | CageHabitat, v: number) => ((h as CoopHabitat).model.s.friend = v) },
-    { name: 'cage', make: () => new CageHabitat(null, 1), items: CAGE_DECOR, areas: CAGE_DECOR_AREAS, earn: (h: CoopHabitat | CageHabitat, v: number) => ((h as CageHabitat).model.s.trust = v) },
-  ];
-  for (const k of setups)
+  for (const k of PETS)
     test(`${k.name}: one to start with, more earned, all four fit, and they are saved`, () => {
-      const h = k.make();
+      const h = k.make(null, 1);
       h.name = 'Pal';
       expect(h.tools().some((t) => t.id === 'decorate' && t.kind === 'mode')).toBe(true);
-      const box = h.decor();
+      const box = h.decor!();
       expect(box.options().filter((o) => !o.locked)).toHaveLength(1);
-      // earning the next one is announced
+      // earning the rest is announced
       k.earn(h, Math.max(...k.items.map((i) => i.need)));
       h.update(1 / 60, 1 / 60, DAY);
       expect(h.drainEvents().filter((e) => e.type === 'toast' && e.text.startsWith('New decoration'))).toHaveLength(k.items.length - 1);
       for (const it of k.items) expect(box.toggle(it.id)).toBe('added');
       // every one fits on the floor, inside the scene
+      const saved = h.serialize() as { decor: Placed[] };
       for (const o of k.items) {
-        const p = h.serialize() as { decor: Placed[] };
-        const at = p.decor.find((d) => d.id === o.id)!;
+        const at = saved.decor.find((d) => d.id === o.id)!;
         expect(k.areas.some((a) => a.y === at.y && at.x - o.w / 2 >= a.x0 && at.x + o.w / 2 <= a.x1)).toBe(true);
       }
-      const back = k.name === 'coop' ? new CoopHabitat(JSON.parse(JSON.stringify(h.serialize())), 2) : new CageHabitat(JSON.parse(JSON.stringify(h.serialize())), 2);
-      expect(back.decor().count()).toBe(k.items.length);
+      const back = k.make(JSON.parse(JSON.stringify(saved)), 2);
+      expect(back.decor!().count()).toBe(k.items.length);
+      // a save from before decorations has none
+      const old = JSON.parse(JSON.stringify(saved));
+      delete old.decor;
+      expect(k.make(old, 3).decor!().count()).toBe(0);
     });
 
   test('while decorating, taps move decorations and never poke the animal', () => {
@@ -132,14 +146,6 @@ describe('decorations in the coop and the cage', () => {
     expect(Math.abs(m.s.decor[0].x - 280)).toBeLessThan(15);
   });
 
-  test('saves from before decorations load with none', () => {
-    const coop = new CoopHabitat({ birds: [{ name: 'Old', state: 'idle', grow: 9 }] }, 1);
-    expect(coop.decor().count()).toBe(0);
-    const old = new CageHabitat(null, 1).serialize() as Record<string, unknown>;
-    delete old.decor;
-    expect(new CageHabitat(old, 1).decor().count()).toBe(0);
-  });
-
   test('renders: every item in its picker, and a decorated coop and cage', () => {
     const OUT = process.env.SNAP_DIR;
     const shoot = (name: string, sf: Surface, scale = 3) => {
@@ -149,14 +155,13 @@ describe('decorations in the coop and the cage', () => {
       writeFileSync(`${OUT}/${name}.png`, encodePng(sf, scale));
     };
     const sf = new Surface(320, 180);
-    for (const [name, h] of [['coop', new CoopHabitat(null, 4)], ['cage', new CageHabitat(null, 4)]] as const) {
+    for (const k of PETS) {
+      const h = k.make(null, 4);
+      const name = k.name;
       h.name = 'Pal';
-      if (h instanceof CoopHabitat) {
-        h.model.s.friend = 99;
-        const b = h.model.lead.s;
-        Object.assign(b, { state: 'idle', grow: 9, x: 120, age: 9e5 });
-      } else h.model.s.trust = 99;
-      const box = h.decor();
+      k.earn(h, 999);
+      k.prep?.(h);
+      const box = h.decor!();
       const pv = new Surface(80 * box.options().length, 40);
       box.options().forEach((o, i) => {
         const one = new Surface(80, 40);

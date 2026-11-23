@@ -1,7 +1,7 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { COATS } from './art';
-import type { Placed } from '../decor';
+import { savedDecor, type Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -236,7 +236,7 @@ export class Hamster {
       base.droppings = Array.isArray(r.droppings) ? r.droppings.filter((d) => typeof d === 'number') : [];
       base.treats = Array.isArray(r.treats) ? r.treats : [];
       // decorations are checked against the cage's list by the habitat
-      base.decor = Array.isArray(r.decor) ? r.decor.filter((d) => d && typeof d === 'object') : [];
+      base.decor = savedDecor(r.decor);
       base.coat = clamp(Math.floor(base.coat) || 0, 0, COATS.length - 1);
       // Resume somewhere sensible rather than mid-action.
       const h = new Hamster(base);

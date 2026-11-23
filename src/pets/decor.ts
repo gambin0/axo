@@ -1,6 +1,6 @@
 import { clamp } from '../core/rng';
 import type { Surface } from '../render/surface';
-import type { DecorOption, DecorPicker } from './types';
+import type { DecorOption, DecorPicker, Tool } from './types';
 
 /** Something a child can put out in a habitat. Drawn standing on (x, y), its bottom middle. */
 export interface DecorItem {
@@ -32,6 +32,15 @@ export interface Placed {
 /** How many decorations a habitat holds at once, so it never gets cluttered. */
 export const MAX_DECOR = 4;
 
+/** The toolbar button that picks decorations out and moves them about. */
+export const DECORATE_TOOL: Tool = { id: 'decorate', icon: '🎨', label: 'Decorate', kind: 'mode' };
+
+/** What to say when a decoration is earned. */
+export const unlockText = (d: DecorItem): string => `New decoration: ${d.icon} ${d.label}! Tap 🎨 Decorate to put it out.`;
+
+/** Tidy a saved list of decorations before the habitat checks it against its items. */
+export const savedDecor = (v: unknown): Placed[] => (Array.isArray(v) ? v.filter((d) => d && typeof d === 'object') : []);
+
 export interface DecorSetup {
   items: DecorItem[];
   areas: DecorArea[];
@@ -54,6 +63,8 @@ export class DecorBox implements DecorPicker {
   held: { id: string; x: number; y: number; dx: number } | null = null;
   /** The one just put out bounces for a moment so it is noticed. */
   private fresh: { id: string; t: number } | null = null;
+  /** Items already earned, so a newly earned one can be announced. */
+  private known = new Set<string>();
 
   constructor(private readonly setup: DecorSetup) {
     // tidy up whatever was saved: unknown items, doubles, too many, or spots that no longer fit
@@ -65,6 +76,14 @@ export class DecorBox implements DecorPicker {
       if (at) keep.push({ id: p.id, ...at });
     }
     saved.splice(0, saved.length, ...keep);
+    for (const it of setup.items) if (this.unlocked(it.id)) this.known.add(it.id);
+  }
+
+  /** Items earned since this was last asked. */
+  newlyUnlocked(): DecorItem[] {
+    const out = this.setup.items.filter((it) => !this.known.has(it.id) && this.unlocked(it.id));
+    for (const it of out) this.known.add(it.id);
+    return out;
   }
 
   get placed(): Placed[] {
