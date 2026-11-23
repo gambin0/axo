@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox } from '../decor';
 import { BREEDS, drawChicken, drawEgg, type ChickPose, type ChickPoseName } from './art';
+import { COOP_DECOR, COOP_DECOR_AREAS, coopPreviewBg } from './decor';
 import {
   Bird, BROODER, CHOCOLATE, COOP, CORN, Flock, GROUND, HEN, NEST, newFlockState, PERCH, RAMP, SPOT, STAGE, SWING, TREATS, YARD, type Pt,
 } from './model';
@@ -66,8 +68,20 @@ export class CoopHabitat implements Habitat {
   private holding = false;
   private lastState = new Map<number, string>();
 
+  private decorBox: DecorBox;
+  /** Decorations already unlocked, so a new one can be announced. */
+  private decorOpen: Set<string>;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Flock.load(saved, seed) : new Flock(newFlockState(seed));
+    this.decorBox = new DecorBox({
+      items: COOP_DECOR, areas: COOP_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.friend, previewBg: coopPreviewBg,
+    });
+    this.decorOpen = new Set(COOP_DECOR.filter((d) => this.decorBox.unlocked(d.id)).map((d) => d.id));
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   /** The pet's name is the first bird's. */
@@ -262,6 +276,14 @@ export class CoopHabitat implements Habitat {
       }
     }
     m.fx.length = 0;
+    // a decoration earned: say so
+    for (const d of COOP_DECOR)
+      if (!this.decorOpen.has(d.id) && this.decorBox.unlocked(d.id)) {
+        this.decorOpen.add(d.id);
+        sound('hatch');
+        toast(`New decoration: ${d.icon} ${d.label}! Tap 🎨 Decorate to put it out.`);
+      }
+    this.decorBox.update(dt);
     for (const b of m.birds) {
       const st = b.s.state;
       if (st !== this.lastState.get(b.s.id)) {
@@ -316,10 +338,15 @@ export class CoopHabitat implements Habitat {
     if (kind === 'up') {
       m.finger = null;
       this.holding = false;
+      this.decorBox.pointer('up', x, y);
       return;
     }
     if (this.tool === 'clean') {
       if (m.clean(x) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (kind === 'down') {
@@ -348,11 +375,14 @@ export class CoopHabitat implements Habitat {
     ];
     // once there is a hen, an egg from the nest box can go under the lamp to hatch
     if (m.hasHen() || s.nest.length) out.push({ id: 'egg', icon: '🥚', label: 'Hatch', kind: 'drag' });
+    out.push({ id: 'decorate', icon: '🎨', label: 'Decorate', kind: 'mode' });
     out.push({ id: 'light', icon: '💡', label: 'Light', kind: 'toggle', on: s.light });
     return out;
   }
 
   useTool(id: string): void {
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     if (id === 'light') this.model.s.light = !this.model.s.light;
     else this.tool = id;
   }
@@ -942,6 +972,8 @@ export class CoopHabitat implements Habitat {
     // the eggs in the nest box
     s.nest.forEach((breed, i) => drawEgg(sf, NEST.x - 7 + i * 7, NEST.lip + 1, BREEDS[breed].egg, 0, 0, 0.8));
 
+    // decorations under the hen house stand behind the birds
+    this.decorBox.draw(sf, time, (p) => p.y <= GROUND);
     // birds further back (up in the coop, then by height) are drawn first
     const order = [...m.birds].sort((a, b) => (a.s.where === b.s.where ? a.s.y - b.s.y || a.s.id - b.s.id : a.s.where === 'coop' ? -1 : 1));
     for (const b of order) this.drawBird(sf, b, time);
@@ -949,6 +981,10 @@ export class CoopHabitat implements Habitat {
     for (let y = NEST.lip; y < COOP.floor; y++)
       for (let x = NEST.x0; x <= NEST.x1; x++) sf.px(x, y, y === NEST.lip ? WOOD[0] : dither(WOOD, 0.35 + (x > NEST.x1 - 4 ? 0.3 : 0) + hash2(x >> 2, y, 637) * 0.1, x, y));
     if (s.nest.length > 0 && Math.sin(time * 3) > 0.4) this.particles.spawn('sparkle', NEST.x - 7 + Math.floor(Math.random() * s.nest.length) * 7, NEST.lip - 7);
+
+    // decorations along the front of the run stand in front of everything
+    this.decorBox.draw(sf, time, (p) => p.y > GROUND);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     const hopping = m.birds.some((b) => b.s.state === 'hop');
     if (this.holding && m.finger && !hopping) this.drawFinger(sf, m.finger);

@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox } from '../decor';
 import { COATS, drawHamster, type HamPoseName } from './art';
+import { CAGE_DECOR, CAGE_DECOR_AREAS, cagePreviewBg } from './decor';
 import {
   BOTTLE, CAGE, GROUND, HAM, Hamster, NEST, newHamsterState, polyPrefix, SPOT, STORE, SWEETS, TREATS, TUBE, tubePath, TUNNELS, tunnelOpen,
   WHEEL, type Pt,
@@ -50,8 +52,20 @@ export class CageHabitat implements Habitat {
   /** The finger is drawn while it is held down with the hand tool. */
   private holding = false;
 
+  private decorBox: DecorBox;
+  /** Decorations already unlocked, so a new one can be announced. */
+  private decorOpen: Set<string>;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Hamster.load(saved, seed) : new Hamster(newHamsterState(seed));
+    this.decorBox = new DecorBox({
+      items: CAGE_DECOR, areas: CAGE_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.trust, previewBg: cagePreviewBg,
+    });
+    this.decorOpen = new Set(CAGE_DECOR.filter((d) => this.decorBox.unlocked(d.id)).map((d) => d.id));
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -85,6 +99,14 @@ export class CageHabitat implements Habitat {
     m.update(dt, slowDt, env);
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     const sound = (name: Extract<UiEvent, { type: 'sound' }>['name']) => this.events.push({ type: 'sound', name });
+    // a decoration earned: say so
+    for (const d of CAGE_DECOR)
+      if (!this.decorOpen.has(d.id) && this.decorBox.unlocked(d.id)) {
+        this.decorOpen.add(d.id);
+        sound('hatch');
+        toast(`New decoration: ${d.icon} ${d.label}! Tap 🎨 Decorate to put it out.`);
+      }
+    this.decorBox.update(dt);
     const once = (key: string, text: string) => {
       if (this.said.has(key)) return;
       this.said.add(key);
@@ -205,10 +227,15 @@ export class CageHabitat implements Habitat {
     if (kind === 'up') {
       m.finger = null;
       this.holding = false;
+      this.decorBox.pointer('up', x, y);
       return;
     }
     if (this.tool === 'clean') {
       if (m.clean(x) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (kind === 'down') {
@@ -231,11 +258,14 @@ export class CageHabitat implements Habitat {
       ...TREATS.slice(1).map((t, i) => ({ id: `treat:${i + 1}`, icon: t.icon, label: t.name.split(' ')[0], kind: 'drag' as const })),
       { id: 'water', icon: '💧', label: 'Water', kind: 'drag', disabled: s.bottle > 0.9 },
       { id: 'clean', icon: '🧹', label: 'Clean', kind: 'mode' },
+      { id: 'decorate', icon: '🎨', label: 'Decorate', kind: 'mode' },
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: s.lamp },
     ];
   }
 
   useTool(id: string): void {
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     if (id === 'lamp') this.model.s.lamp = !this.model.s.lamp;
     else this.tool = id;
   }
@@ -756,6 +786,8 @@ export class CageHabitat implements Habitat {
           sf.px(SPOT.bath + dx, GROUND - 5 + k, k === 0 ? 0xe4defa : k === d ? 0x6a62a0 : dither([0xc4bce8, 0xa49cd0, 0x8078b4], k / 5 + (dx > 8 ? 0.3 : 0), SPOT.bath + dx, k));
       }
     }
+    // decorations on the bedding stand behind the hamster
+    this.decorBox.draw(sf, time, (p) => p.y <= GROUND);
     this.drawFood(sf, time);
     this.drawWheel(sf);
     this.drawBottle(sf, s.bottle, time);
@@ -782,6 +814,9 @@ export class CageHabitat implements Habitat {
     }
     // the tube goes over the hamster so it can be seen inside
     if (m.can('tube')) for (const p of this.tubePixels()) sf.blend(p.x, p.y, p.c, p.a);
+    // decorations along the front, by the glass
+    this.decorBox.draw(sf, time, (p) => p.y > GROUND);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     if (this.holding && m.finger && s.state !== 'climb') this.drawFinger(sf, m.finger);
     this.particles.render(sf);
 

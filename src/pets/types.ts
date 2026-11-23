@@ -53,6 +53,29 @@ export interface Looks {
   choose(i: number): void;
 }
 
+/** One decoration as the picker shows it. */
+export interface DecorOption {
+  id: string;
+  icon: string;
+  label: string;
+  /** Out in the habitat now. */
+  placed: boolean;
+  /** Not earned yet; progress is how close it is, 0..1. */
+  locked: boolean;
+  progress: number;
+  /** Paints a small picture of it, background and all. */
+  preview(sf: Surface): void;
+}
+
+/** The decorations a habitat offers, for the Decorate picker. */
+export interface DecorPicker {
+  readonly max: number;
+  count(): number;
+  options(): DecorOption[];
+  /** Put it out, or away if it is out already. */
+  toggle(id: string): 'added' | 'removed' | 'full' | 'locked' | 'room';
+}
+
 /** One habitat: a pet's simulation plus how it draws and responds to touch. */
 export interface Habitat {
   readonly id: PetId;
@@ -83,4 +106,6 @@ export interface Habitat {
   /** An animal born in the habitat and waiting for a name, if any: the shell asks the child for one. */
   newcomer?(): { ask: string; fallback: string } | null;
   nameNewcomer?(name: string): void;
+  /** Decorations the child can put out, if the habitat has any. Its tools include a 'decorate' mode. */
+  decor?(): DecorPicker;
 }

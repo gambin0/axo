@@ -338,6 +338,7 @@ function refreshUi(): void {
             if (t.kind === 'drag') {
               if (ev.detail === 0) h.drop(t.id, null);
             } else h.useTool(t.id);
+            if (t.id === 'decorate' && active) decorDialog(active);
             refreshUi();
           },
         },
@@ -484,6 +485,69 @@ function lookGrid(looks: Looks, selected: number, onPick: (i: number) => void): 
     return b;
   });
   return el('div', { class: 'morphs' }, ...buttons);
+}
+
+/**
+ * Pick decorations to put out, or tap one that is out to put it away. Ones not earned yet show
+ * a lock and how close they are. Every label is read aloud when tapped.
+ */
+function decorDialog(id: PetId): void {
+  const h = habitats[id];
+  const box = h.decor?.();
+  if (!box) return;
+  const head = 'Decorate! Tap something to put it out, or tap it again to put it away.';
+  const ask = readable(head);
+  const note = el('p', { class: 'news', 'aria-live': 'polite' });
+  const say = (text: string) => {
+    const r = readable(text);
+    note.replaceChildren(r.node);
+    hear(text, r.marks);
+  };
+  const grid = el('div', { class: 'morphs decor' });
+  const fill = () => {
+    grid.replaceChildren(
+      ...box.options().map((o) => {
+        const c = el('canvas', { width: 80, height: 40 });
+        const sf = new Surface(80, 40);
+        o.preview(sf);
+        present(c, sf);
+        const name = readable(o.label);
+        const parts: Node[] = [c, el('span', {}, o.locked ? '🔒 ' : o.placed ? '✓ ' : '', name.node)];
+        if (o.locked) {
+          const bar = el('i', {});
+          bar.style.width = `${Math.round(o.progress * 100)}%`;
+          parts.push(el('div', { class: 'bar' }, bar));
+        }
+        const b = el('button', { type: 'button', class: o.locked ? 'locked' : '', 'aria-pressed': String(o.placed), 'aria-label': o.label }, ...parts);
+        b.addEventListener('click', () => {
+          unlock();
+          const r = box.toggle(o.id);
+          if (r === 'added') {
+            dlg.close();
+            toasts.show(`Here's the ${o.label.toLowerCase()}! With 🎨 picked, drag it to move it.`);
+            refreshUi();
+            persist();
+            return;
+          }
+          if (r === 'removed') say(`You put the ${o.label.toLowerCase()} away.`);
+          if (r === 'locked') say(`Keep looking after ${h.name} to unlock the ${o.label.toLowerCase()}!`);
+          if (r === 'full') say(`There's only room for ${box.max}. Tap one with a tick to put it away first.`);
+          if (r === 'room') say(`There's no room for the ${o.label.toLowerCase()}. Move something over first.`);
+          fill();
+          persist();
+        });
+        return b;
+      }),
+    );
+  };
+  fill();
+  const dlg = dialog(
+    el('h3', { onpointerdown: () => (unlock(), hear(head, ask.marks)) }, ask.node),
+    grid,
+    note,
+    el('button', { class: 'big', type: 'button', onclick: () => dlg.close() }, 'Done'),
+  );
+  hear(head, ask.marks);
 }
 
 function nameDialog(id: PetId): void {

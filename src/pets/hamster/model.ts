@@ -1,6 +1,7 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { COATS } from './art';
+import type { Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -122,6 +123,8 @@ export interface HamsterState {
   state: Behavior;
   timer: number;
   lamp: boolean;
+  /** Decorations put out in the cage. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -142,7 +145,7 @@ export function newHamsterState(seed: number, name = '', coat = -1): HamsterStat
     name, coat: coat >= 0 ? coat : rng.int(COATS.length), fullness: 70, energy: 30, trust: 5, trustPeak: 5, trustDay: 0, trustToday: 0,
     cheeks: 0, bowl: 5, hoard: 4, bottle: 0.9, dug: [1, 0.6, 0, 0], droppings: [], dropClock: 0,
     treats: [{ id: 1, x: 160, kind: 0, age: 0 }], nextTreat: 2, age: 0, treatKind: 1,
-    x: 118, y: GROUND, where: 'surface', facing: 1, state: 'idle', timer: 1.5, lamp: false, rng: rng.s,
+    x: 118, y: GROUND, where: 'surface', facing: 1, state: 'idle', timer: 1.5, lamp: false, decor: [], rng: rng.s,
   };
 }
 
@@ -232,6 +235,8 @@ export class Hamster {
       base.dug[0] = 1;
       base.droppings = Array.isArray(r.droppings) ? r.droppings.filter((d) => typeof d === 'number') : [];
       base.treats = Array.isArray(r.treats) ? r.treats : [];
+      // decorations are checked against the cage's list by the habitat
+      base.decor = Array.isArray(r.decor) ? r.decor.filter((d) => d && typeof d === 'object') : [];
       base.coat = clamp(Math.floor(base.coat) || 0, 0, COATS.length - 1);
       // Resume somewhere sensible rather than mid-action.
       const h = new Hamster(base);

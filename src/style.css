@@ -402,11 +402,22 @@ button:focus-visible {
   width: 100%;
   border-radius: 8px;
 }
-.morphs button span {
+.morphs button > span {
   display: block;
   margin-top: 4px;
   color: #f4ead8;
   font-weight: 700;
+}
+/* decorations not earned yet: dimmed, with how close they are */
+.morphs button.locked canvas {
+  opacity: 0.45;
+  filter: grayscale(0.7);
+}
+.morphs.decor .bar {
+  margin-top: 4px;
+  width: 100%;
+  height: 8px;
+  background: #24384a;
 }
 .big {
   background: var(--accent);

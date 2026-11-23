@@ -1,6 +1,7 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { BREEDS } from './art';
+import type { Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -140,6 +141,8 @@ export interface FlockState {
   raised: number;
   /** Pet seconds since the first egg hatched, for counting days. */
   time: number;
+  /** Decorations put out in the run. */
+  decor: Placed[];
   light: boolean;
   rng: number;
 }
@@ -171,7 +174,7 @@ export function newFlockState(seed: number, name = '', breed = -1): FlockState {
   // An egg in the warm straw, about to hatch, so the first visit sees it happen.
   return {
     birds: [first], nextBird: 2, feeder: 5, water: 0.9, friend: 5, friendPeak: 5, friendDay: 0, friendToday: 0, droppings: [], dropClock: 0,
-    treats: [{ id: 1, x: 84, kind: WORM, age: 0, bits: 1 }], nextTreat: 2, nest: [], collected: 0, raised: 0, time: 0, light: false, rng: rng.s,
+    treats: [{ id: 1, x: 84, kind: WORM, age: 0, bits: 1 }], nextTreat: 2, nest: [], collected: 0, raised: 0, time: 0, decor: [], light: false, rng: rng.s,
   };
 }
 
@@ -818,6 +821,8 @@ export class Flock {
       state.treats = r.treats as Treat[];
       state.droppings = r.droppings as number[];
     }
+    // decorations are checked against the coop's list by the habitat
+    state.decor = Array.isArray(state.decor) ? state.decor.filter((d) => d && typeof d === 'object') : [];
     state.droppings = Array.isArray(state.droppings) ? state.droppings.filter((d) => typeof d === 'number') : [];
     state.treats = Array.isArray(state.treats) ? state.treats.filter((t) => t && typeof t.x === 'number') : [];
     state.nextBird = Math.max(num(state.nextBird, 0), ...state.birds.map((b) => b.id + 1));
