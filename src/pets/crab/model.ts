@@ -23,7 +23,7 @@ export const SPARE_X = [52, 92, 150] as const;
 export const sandY = (x: number): number => TANK.sand + Math.round(Math.sin(x * 0.04) * 2 + Math.sin(x * 0.11 + 1) * 1);
 
 export type Behavior =
-  | 'idle' | 'walk' | 'eat' | 'drink' | 'hide' | 'follow' | 'shop' | 'inspect' | 'swap' | 'dig' | 'climb' | 'perch' | 'descend' | 'moult' | 'sniff';
+  | 'idle' | 'walk' | 'eat' | 'drink' | 'hide' | 'follow' | 'shop' | 'inspect' | 'swap' | 'dig' | 'climb' | 'perch' | 'descend' | 'moult' | 'sniff' | 'visit';
 
 export interface Shell {
   id: number;
@@ -107,11 +107,12 @@ export interface CrabState {
 }
 
 export type CrabFxKind =
-  | 'heart' | 'no' | 'sparkle' | 'dust' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'bury' | 'emerge' | 'swapped' | 'rejected' | 'cramped' | 'plop' | 'sip';
+  | 'heart' | 'no' | 'sparkle' | 'dust' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'bury' | 'emerge' | 'swapped' | 'rejected' | 'cramped' | 'plop' | 'sip' | 'visit';
 export interface CrabFx {
   kind: CrabFxKind;
   x: number;
   y: number;
+  text?: string;
 }
 
 export const SHELL_SHAPES = 3, SHELL_PATTERNS = 4, SHELL_HUES = 5;
@@ -188,8 +189,8 @@ export class Crab {
     return JSON.parse(JSON.stringify(this.s));
   }
 
-  emit(kind: CrabFxKind, x: number, y: number): void {
-    if (this.fx.length < 60) this.fx.push({ kind, x, y });
+  emit(kind: CrabFxKind, x: number, y: number, text?: string): void {
+    if (this.fx.length < 60) this.fx.push({ kind, x, y, text });
   }
 
   // ---- derived -----------------------------------------------------------
@@ -367,6 +368,11 @@ export class Crab {
     return this.s[kind];
   }
 
+  /** The big shell, if it is out on the sand. */
+  conch(): Placed | undefined {
+    return this.s.decor.find((d) => d.id === 'conch');
+  }
+
   private go(tx: number): void {
     this.s.tx = clamp(tx, TANK.minX, TANK.maxX);
   }
@@ -402,6 +408,15 @@ export class Crab {
       s.timer = 20;
       return;
     }
+    // a big shell out on the sand is worth a closer look: hermit crabs can't resist a shell
+    const conch = this.conch();
+    if (conch && rng.chance(0.15)) {
+      s.state = 'visit';
+      s.step = 0;
+      this.go(conch.x + (s.x < conch.x ? -16 : 16));
+      s.timer = 30;
+      return;
+    }
     const r = rng.next();
     if (r < 0.45) {
       s.state = 'walk';
@@ -424,6 +439,13 @@ export class Crab {
   /** Move toward tx along the sand. Returns true on arrival. */
   private walkTo(dt: number, speed: number): boolean {
     const s = this.s;
+    // back up from the front of the sand first, if it went down to look at something there
+    const floor = sandY(Math.round(s.x));
+    if (s.y > floor + 0.5) {
+      s.y = Math.max(floor, s.y - speed * dt);
+      this.eatPhase += dt;
+      return false;
+    }
     const dx = s.tx - s.x;
     if (Math.abs(dx) < 1.5) return true;
     s.facing = dx > 0 ? 1 : -1;
@@ -472,6 +494,41 @@ export class Crab {
     }
 
     switch (s.state) {
+      case 'visit': {
+        const conch = this.conch();
+        if (!conch || s.timer <= 0) {
+          s.step = -1;
+          s.state = 'idle';
+          s.timer = 1;
+          break;
+        }
+        if (s.step === 0) {
+          // along the sand to beside the shell
+          s.tx = clamp(conch.x + (s.x < conch.x ? -16 : 16), TANK.minX, TANK.maxX);
+          if (this.walkTo(dt, speed)) s.step = 1;
+        } else if (s.step === 1) {
+          // then forward to the front of the tank, where it lies
+          const y = conch.y - 1;
+          s.facing = conch.x >= s.x ? 1 : -1;
+          s.y = Math.min(y, s.y + speed * dt);
+          this.eatPhase += dt;
+          if (s.y >= y) {
+            s.step = 2;
+            s.timer = 4;
+            this.emit('visit', conch.x, conch.y - 10, conch.id);
+          }
+        } else {
+          // feel it all over with a claw, then go back to the sand
+          s.facing = conch.x >= s.x ? 1 : -1;
+          this.eatPhase += dt * 2;
+          if (s.timer <= 0.1) {
+            s.step = -1;
+            s.state = 'idle';
+            s.timer = 1;
+          }
+        }
+        break;
+      }
       case 'idle':
         if (s.timer <= 0) this.choose(env);
         break;

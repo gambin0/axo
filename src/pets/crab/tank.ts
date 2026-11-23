@@ -152,6 +152,9 @@ export class CrabHabitat implements Habitat {
         case 'rejected':
           once('rejected', `${this.who()} looked it over and walked away. Not every shell is right!`);
           break;
+        case 'visit':
+          once('visit', `${this.who()} is feeling the big shell with a claw. Hermit crabs can't resist a shell, even one far too big to wear!`);
+          break;
       }
     }
     m.fx.length = 0;
@@ -539,8 +542,9 @@ export class CrabHabitat implements Habitat {
       const swapping = s.state === 'swap' && m.swapTo;
       const bare = swapping && s.timer > 0.9;
       const lift = s.state === 'dig' ? 3 : 0;
-      const moving = ['walk', 'follow', 'shop', 'sniff', 'climb', 'descend', 'eat', 'drink'].includes(s.state) && (Math.abs(s.tx - s.x) > 1.5 || s.step >= 0);
-      const reach = s.state === 'inspect' ? 0.5 + 0.5 * Math.sin(time * 9) : s.state === 'eat' || s.state === 'drink' ? 0.5 + 0.5 * Math.sin(m.eatPhase * 8) : 0;
+      const visiting = s.state === 'visit' && s.step === 2;
+      const moving = (['walk', 'follow', 'shop', 'sniff', 'climb', 'descend', 'eat', 'drink'].includes(s.state) && (Math.abs(s.tx - s.x) > 1.5 || s.step >= 0)) || (s.state === 'visit' && !visiting);
+      const reach = s.state === 'inspect' || visiting ? 0.5 + 0.5 * Math.sin(time * 9) : s.state === 'eat' || s.state === 'drink' ? 0.5 + 0.5 * Math.sin(m.eatPhase * 8) : 0;
       if (s.state === 'inspect' || swapping) {
         // the crab holds its claw out to the shell it is trying
         const sh = swapping ? m.swapTo! : s.spare.find((x) => !x.looked);

@@ -12,6 +12,7 @@ import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
 import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
 import { CrabHabitat } from '../pets/crab/tank';
+import { sandY } from '../pets/crab/model';
 import { AQUA_DECOR, AQUA_DECOR_AREAS } from '../pets/axolotl/decor';
 import { AxolotlHabitat } from '../pets/axolotl/tank';
 import { Axolotl } from '../pets/axolotl/model';
@@ -384,5 +385,30 @@ describe('animals use their decorations', () => {
     expect(rested).toBeGreaterThan(60);
     expect(carrying).toBeGreaterThan(0);
     expect(told.filter((t) => t.includes('garden gnome'))).toHaveLength(1);
+  });
+
+  test('the hermit crab goes over to feel the big shell, then back to the sand', () => {
+    const h = new CrabHabitat(null, 11);
+    h.name = 'Pinchy';
+    const m = h.model;
+    Object.assign(m.s, { fullness: 100, thirst: 100, trust: 40 });
+    m.s.spare = [];
+    m.s.decor.push({ id: 'conch', x: 220, y: 168 });
+    let feeling = 0, backOnSand = false, wasFront = false;
+    const told: string[] = [];
+    for (let i = 0; i < 60 * 400; i++) {
+      Object.assign(m.s, { fullness: 100, thirst: 100 });
+      h.update(1 / 60, 1 / 60, DAY);
+      for (const e of h.drainEvents()) if (e.type === 'toast') told.push(e.text);
+      if (m.s.state === 'visit' && m.s.step === 2) {
+        feeling++;
+        expect(Math.abs(Math.abs(m.s.x - 220) - 16)).toBeLessThan(2);
+        expect(m.s.y).toBe(167);
+        wasFront = true;
+      } else if (wasFront && m.s.state === 'walk' && Math.abs(m.s.y - sandY(Math.round(m.s.x))) < 1) backOnSand = true;
+    }
+    expect(feeling).toBeGreaterThan(60 * 3);
+    expect(backOnSand).toBe(true);
+    expect(told.some((t) => t.includes('big shell'))).toBe(true);
   });
 });
