@@ -11,6 +11,8 @@ import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
 import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
 import { CrabHabitat } from '../pets/crab/tank';
+import { JAR_DECOR, JAR_DECOR_AREAS } from '../pets/butterfly/decor';
+import { ButterflyHabitat } from '../pets/butterfly/jar';
 import { FARM_DECOR, FARM_DECOR_AREAS } from '../pets/ants/decor';
 import { AntHabitat } from '../pets/ants/farm';
 import { POND_DECOR, POND_DECOR_AREAS } from '../pets/pond/decor';
@@ -47,6 +49,10 @@ const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; ite
   },
   { name: 'pond', make: (s, n) => new PondHabitat(s, n), items: POND_DECOR, areas: POND_DECOR_AREAS, earn: (h, v) => ((h as PondHabitat).model.s.frogs[0].dev = Math.min(9, v / 10)) },
   { name: 'farm', make: (s, n) => new AntHabitat(s, n), items: FARM_DECOR, areas: FARM_DECOR_AREAS, earn: (h, v) => ((h as AntHabitat).model.s.workers = Math.min(120, v)) },
+  {
+    name: 'jar', make: (s, n) => new ButterflyHabitat(s, n), items: JAR_DECOR, areas: JAR_DECOR_AREAS,
+    earn: (h, v) => Object.assign((h as ButterflyHabitat).model.s.bugs[0], v >= 30 ? { stage: 'fly', t: 0 } : { stage: v >= 20 ? 'pupa' : v >= 10 ? 'cat' : 'egg', t: (v % 10) / 10 }),
+  },
   { name: 'tank', make: (s, n) => new CrabHabitat(s, n), items: TANK_DECOR, areas: TANK_DECOR_AREAS, earn: (h, v) => ((h as CrabHabitat).model.s.trust = v) },
 ];
 

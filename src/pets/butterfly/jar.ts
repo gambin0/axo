@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { drawButterfly, drawCaterpillar, drawChrysalis, drawFlower, drawLeaf, drawOrange } from './art';
+import { JAR_DECOR, JAR_DECOR_AREAS, jarPreviewBg } from './decor';
 import {
   BFLY, FLOWER_X, HANG, JAR, Jar, ORANGE_X, SLOTS, STEM_TOP, newJarState, stemX,
   type Bug, type Pt, type Stage,
@@ -31,8 +33,18 @@ export class ButterflyHabitat implements Habitat {
   /** Where each caterpillar's head has been, so the body can follow. */
   private trails = new Map<number, Pt[]>();
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Jar.load(saved, seed) : new Jar(newJarState(seed));
+    // decorations are earned along the life cycle: caterpillar, chrysalis, butterfly
+    this.decorBox = new DecorBox({
+      items: JAR_DECOR, areas: JAR_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.progress(), previewBg: jarPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -65,6 +77,11 @@ export class ButterflyHabitat implements Habitat {
     for (const b of m.s.bugs) if (b.stage === 'cat') this.trail(b);
 
     const toast = (text: string) => this.events.push({ type: 'toast', text });
+    for (const d of this.decorBox.newlyUnlocked()) {
+      this.events.push({ type: 'sound', name: 'pop' });
+      toast(unlockText(d));
+    }
+    this.decorBox.update(dt);
     for (const fx of m.fx) {
       switch (fx.kind) {
         case 'munch':
@@ -153,6 +170,11 @@ export class ButterflyHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       m.finger = null;
+      this.decorBox.pointer('up', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (this.tool === 'clean') {
@@ -179,12 +201,15 @@ export class ButterflyHabitat implements Habitat {
       { id: 'orange', icon: '🍊', label: 'Orange', kind: 'drag' },
       { id: 'mist', icon: '💦', label: 'Mist', kind: 'action' },
       { id: 'clean', icon: '🧹', label: 'Tidy', kind: 'mode' },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: this.model.s.lamp },
     ];
   }
 
   useTool(id: string): void {
     const m = this.model;
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     switch (id) {
       case 'mist':
         m.mist();
@@ -417,6 +442,10 @@ export class ButterflyHabitat implements Habitat {
       sf.px(fx, JAR.floor - 1, 0x2e2a1c);
       sf.px(fx + 1, JAR.floor - 1, 0x3d3826);
     }
+
+    // decorations on the floor, in the gaps between the pot, the orange and the flowers
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     // leaves, then eggs resting on them
     s.leaves.forEach((l, i) => l && drawLeaf(sf, SLOTS[i].tip, SLOTS[i].dir, l.left, !m.leafFresh(i), sway + i));

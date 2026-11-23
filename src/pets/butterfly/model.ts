@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -106,6 +107,8 @@ export interface JarState {
   frass: number[];
   humidity: number;
   lamp: boolean;
+  /** Decorations put out on the jar's floor. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -139,6 +142,7 @@ export function newJarState(seed: number, name = ''): JarState {
     frass: [],
     humidity: 65,
     lamp: false,
+    decor: [],
     rng: rng.s,
   };
 }
@@ -169,6 +173,8 @@ export class Jar {
       base.leaves = fix<Leaf>(r.leaves, SLOTS.length);
       base.flowers = fix<Feed>(r.flowers, FLOWER_X.length);
       base.frass = Array.isArray(r.frass) ? r.frass : [];
+      // decorations are checked against the jar's list by the habitat
+      base.decor = savedDecor(r.decor);
       if (!Array.isArray(r.bugs) || !r.bugs.length) base.bugs = newJarState(seed).bugs;
     }
     return new Jar(base);
@@ -214,6 +220,16 @@ export class Jar {
   comfort(): number {
     return (this.s.humidity < BFLY.dryBelow ? 0.5 : 1) * (this.cleanliness() < BFLY.messyBelow ? 0.6 : 1);
   }
+  /**
+   * How far along the life cycle the jar has come, for earning decorations: ten points for each
+   * stage the furthest bug has reached, plus how far through it is. A caterpillar is 10 to 20,
+   * a chrysalis 20 to 30, and a butterfly 30 or more.
+   */
+  progress(): number {
+    const order: Stage[] = ['egg', 'cat', 'pupa', 'fly'];
+    return Math.max(0, ...this.s.bugs.map((b) => order.indexOf(b.stage) * 10 + (b.stage === 'fly' ? 0 : clamp(b.t, 0, 1) * 10)));
+  }
+
   count(stage: Stage): number {
     return this.s.bugs.filter((b) => b.stage === stage).length;
   }
