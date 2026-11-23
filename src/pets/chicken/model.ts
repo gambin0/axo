@@ -25,6 +25,9 @@ export const NEST = { x: 290, y: COOP.floor, x0: 278, x1: 304, lip: 111 };
 /** Where eggs sit in the warm straw under the lamp. */
 export const EGG_SPOTS = [BROODER.x - 14, BROODER.x + 14, BROODER.x - 21, BROODER.x + 21];
 
+/** The hay bale's height, so a hen can hop up and sit on it. */
+export const HAY_TOP = 14;
+
 /** Growth is in days of being well fed. A chick needs the heat lamp until it is a pullet. */
 export const STAGE = { pullet: 3, hen: 7 };
 export type Stage = 'egg' | 'chick' | 'pullet' | 'hen';
@@ -75,7 +78,7 @@ export const HEN = {
 
 export type Behavior =
   | 'egg' | 'hatch' | 'idle' | 'walk' | 'peck' | 'eat' | 'drink' | 'scratch' | 'warm' | 'sleep' | 'wake' | 'flap' | 'dust'
-  | 'lay' | 'brood' | 'swing' | 'hop' | 'refuse' | 'cheep';
+  | 'lay' | 'brood' | 'swing' | 'hop' | 'refuse' | 'cheep' | 'bale';
 
 export type Dest = { where: 'yard' | 'coop'; x: number; y?: number };
 
@@ -150,7 +153,7 @@ export interface FlockState {
 export type HenFxKind =
   | 'heart' | 'no' | 'sparkle' | 'dust' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'plop' | 'crack' | 'hatch' | 'cheep' | 'cluck'
   | 'unlock' | 'startle' | 'chocolate' | 'handfed' | 'hop' | 'wake' | 'notyet' | 'pullet' | 'hen' | 'egg' | 'collect' | 'worm' | 'cold'
-  | 'broody' | 'incubate';
+  | 'broody' | 'incubate' | 'bale';
 export interface HenFx {
   kind: HenFxKind;
   x: number;
@@ -191,6 +194,8 @@ export class Bird {
   held = 0;
   /** How long the finger has been held still near it, for hopping on. */
   private still = 0;
+  /** Hopping up onto the hay bale, rather than walking to it. */
+  private baleUp = false;
   private lastFinger: Pt | null = null;
   private taps: number[] = [];
   private speedUp = 1;
@@ -329,7 +334,7 @@ export class Bird {
     const pts: Pt[] = [];
     // off the perch first
     if (s.where === 'coop' && s.y < COOP.floor - 0.5) pts.push({ x: s.x, y: COOP.floor });
-    if (s.where === 'yard' && s.y < GROUND - 0.5) pts.push({ x: s.x, y: GROUND });
+    if (s.where === 'yard' && Math.abs(s.y - GROUND) > 0.5) pts.push({ x: s.x, y: GROUND });
     if (dest.where === 'coop' && this.isChick()) dest = { where: 'yard', x: BROODER.x };
     if (s.where === 'yard' && dest.where === 'coop') pts.push(RAMP.foot, RAMP.top);
     if (s.where === 'coop' && dest.where === 'yard') pts.push(RAMP.top, RAMP.foot);
@@ -507,6 +512,12 @@ export class Bird {
       return;
     }
     const swingFree = !this.f.birds.some((b) => b !== this && (b.s.state === 'swing' || b.then === 'swing'));
+    // a grown bird likes to sit up on the hay bale, if there is one in the run and nobody else is on it
+    const bale = this.f.bale();
+    if (bale && !chick && s.where === 'yard' && !this.f.birds.some((b) => b !== this && (b.s.state === 'bale' || b.then === 'bale')) && this.rng.chance(0.12)) {
+      this.goTo({ where: 'yard', x: bale.x }, 'bale');
+      return;
+    }
     const r = this.rng.next();
     if (r < 0.12 && fs.water > 0.03) this.goTo({ where: 'yard', x: SPOT.water - 13 - 4 * this.growth() }, 'drink');
     else if (r < 0.4) this.goTo({ where: 'yard', x: this.rng.range(YARD.left + 70, RAMP.foot.x - 10) }, 'scratch');
@@ -524,6 +535,14 @@ export class Bird {
     const s = this.s;
     const next = this.then;
     this.then = 'idle';
+    if (next === 'bale' && this.baleUp) {
+      // landed on top
+      this.baleUp = false;
+      s.facing = this.rng.chance(0.5) ? 1 : -1;
+      this.go('bale', this.rng.range(8, 16));
+      this.emit('bale', s.x, s.y - 30);
+      return;
+    }
     switch (next) {
       case 'eat': {
         const t = this.target >= 0 ? this.f.s.treats.find((x) => x.id === this.target) : null;
@@ -575,6 +594,21 @@ export class Bird {
         s.facing = -1;
         this.go('brood', this.rng.range(60, 120));
         break;
+      case 'bale': {
+        // hop forward and up onto the bale, if it is still there
+        const bale = this.f.bale();
+        if (!bale || Math.abs(bale.x - s.x) > 3) {
+          this.go('idle', 0.5);
+          break;
+        }
+        this.path = [{ x: s.x, y: bale.y - HAY_TOP }];
+        this.dest = null;
+        this.then = 'bale';
+        s.state = 'walk';
+        s.timer = 5;
+        this.baleUp = true;
+        break;
+      }
       case 'sleep':
         this.go('sleep', this.rng.range(60, 180));
         break;
@@ -705,6 +739,14 @@ export class Bird {
       case 'hop':
         if (!f || s.timer <= 0) this.go('flap', 0.8);
         break;
+      case 'bale': {
+        // sits a while, then hops down; at once if the bale is moved or put away
+        const bale = this.f.bale();
+        if (this.rng.chance(dt * 0.2)) this.emit('cluck', s.x, s.y);
+        if (s.timer <= 0 || !bale || Math.abs(bale.x - s.x) > 3 || this.bedtime(env))
+          this.goTo({ where: 'yard', x: clamp(s.x + this.rng.range(-14, 14), YARD.left + 14, RAMP.foot.x - 6) }, 'idle');
+        break;
+      }
       case 'cheep':
         if (f) s.facing = f.x >= s.x ? 1 : -1;
         if (s.timer <= 0) {
@@ -731,7 +773,7 @@ export class Bird {
         break;
     }
     // things that end with standing on the floor
-    if (s.state !== 'walk' && s.state !== 'sleep' && s.state !== 'swing' && s.state !== 'hop') s.y = s.where === 'coop' ? COOP.floor : GROUND;
+    if (s.state !== 'walk' && s.state !== 'sleep' && s.state !== 'swing' && s.state !== 'hop' && s.state !== 'bale') s.y = s.where === 'coop' ? COOP.floor : GROUND;
   }
 
   /** Offline step: needs, growing up and eggs, with safety floors. */
@@ -866,7 +908,11 @@ export class Flock {
     const n = this.birds.filter((b) => b.hatched() && (kind === 'chick' ? b.isChick() : !b.isChick() && b.s.broody <= 0)).length;
     return Math.round((this.slot(bird, kind) - (n - 1) / 2) * gap);
   }
-    hasChick(): boolean {
+    /** The hay bale, if it is out somewhere the birds can reach (along the front of the run, not under the hen house). */
+  bale(): Placed | undefined {
+    return this.s.decor.find((d) => d.id === 'hay' && d.y > GROUND && d.x > YARD.left + 14 && d.x < RAMP.foot.x - 6);
+  }
+  hasChick(): boolean {
     return this.birds.some((b) => b.isChick());
   }
   hasHen(): boolean {

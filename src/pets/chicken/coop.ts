@@ -250,6 +250,10 @@ export class CoopHabitat implements Habitat {
             toast(`${n} laid an egg! Tap the nest box to collect it, or drag 🥚 to the heat lamp to hatch it into a chick.`);
           } else toast(`${n} laid an egg!`);
           break;
+        case 'bale':
+          sound('cluck');
+          once('bale', `${n} hopped up onto the hay bale for a sit in the sun!`);
+          break;
         case 'broody':
           for (let i = 0; i < 3; i++) this.particles.spawn('heart', fx.x + i * 5 - 5, fx.y);
           sound('cluck');
@@ -971,7 +975,9 @@ export class CoopHabitat implements Habitat {
     this.decorBox.draw(sf, time, (p) => p.y <= GROUND);
     // birds further back (up in the coop, then by height) are drawn first
     const order = [...m.birds].sort((a, b) => (a.s.where === b.s.where ? a.s.y - b.s.y || a.s.id - b.s.id : a.s.where === 'coop' ? -1 : 1));
-    for (const b of order) this.drawBird(sf, b, time);
+    // a bird up on the hay bale is in front of the run, so it is drawn after the front decorations
+    const onBale = (b: Bird) => b.s.where === 'yard' && b.s.y > GROUND + 1;
+    for (const b of order) if (!onBale(b)) this.drawBird(sf, b, time);
     // the nest box lip goes over a hen sitting in it, and over the eggs
     for (let y = NEST.lip; y < COOP.floor; y++)
       for (let x = NEST.x0; x <= NEST.x1; x++) sf.px(x, y, y === NEST.lip ? WOOD[0] : dither(WOOD, 0.35 + (x > NEST.x1 - 4 ? 0.3 : 0) + hash2(x >> 2, y, 637) * 0.1, x, y));
@@ -979,6 +985,7 @@ export class CoopHabitat implements Habitat {
 
     // decorations along the front of the run stand in front of everything
     this.decorBox.draw(sf, time, (p) => p.y > GROUND);
+    for (const b of order) if (onBale(b)) this.drawBird(sf, b, time);
     if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     const hopping = m.birds.some((b) => b.s.state === 'hop');
@@ -1051,7 +1058,7 @@ export class CoopHabitat implements Habitat {
     if (s.state === 'hop' && m.finger) this.drawFinger(sf, m.finger);
     // a bird stands over a soft shadow, unless it is up on the swing or a hand
     if (s.state !== 'swing' && s.state !== 'hop') {
-      const floor = s.where === 'coop' ? (s.y < COOP.floor - 1 ? s.y : COOP.floor) : GROUND;
+      const floor = s.where === 'coop' ? (s.y < COOP.floor - 1 ? s.y : COOP.floor) : Math.max(GROUND, s.y);
       groundShadow(sf, s.x, floor, Math.round(5 + 8 * b.growth()), 0.25, 0x2a2010);
     }
     // a broody hen's egg peeks out from under her
@@ -1110,6 +1117,10 @@ export class CoopHabitat implements Habitat {
       case 'brood':
         pose = 'sit';
         fluff = 1;
+        break;
+      case 'bale':
+        pose = Math.sin(time * 0.4) > -0.3 ? 'sit' : 'cheep';
+        fluff = 0.3;
         break;
       case 'swing':
       case 'hop':

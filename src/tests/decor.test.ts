@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { envAt } from '../core/time';
 import { COOP_DECOR, COOP_DECOR_AREAS } from '../pets/chicken/decor';
 import { CoopHabitat } from '../pets/chicken/coop';
+import { GROUND, HAY_TOP } from '../pets/chicken/model';
 import { DecorBox, MAX_DECOR, type DecorArea, type DecorItem, type Placed } from '../pets/decor';
 import type { Habitat } from '../pets/types';
 import { CAGE_DECOR, CAGE_DECOR_AREAS } from '../pets/hamster/decor';
@@ -286,5 +287,36 @@ describe('animals use their decorations', () => {
     expect(crossed).toBeGreaterThan(0);
     expect(told.some((t) => t.includes('rock arch'))).toBe(true);
     expect(told.some((t) => t.includes('old boot'))).toBe(true);
+  });
+
+  test('a hen hops up onto the hay bale, sits a while and hops down, and gets off if it is put away', () => {
+    const h = new CoopHabitat(null, 7);
+    h.name = 'Nugget';
+    const m = h.model;
+    Object.assign(m.lead.s, { state: 'idle', grow: 9, x: 60, age: 9e5, fullness: 100 });
+    m.lead.awakeFor = 0;
+    m.s.feeder = m.feederMax();
+    m.s.treats = [];
+    m.s.decor.push({ id: 'hay', x: 120, y: 175 });
+    let sat = 0, firstSat = -1;
+    for (let i = 0; i < 60 * 300; i++) {
+      h.update(1 / 60, 1 / 60, DAY);
+      const s = m.lead.s;
+      if (s.state === 'bale') {
+        sat++;
+        if (firstSat < 0) firstSat = i;
+        expect(Math.abs(s.x - 120)).toBeLessThan(4);
+        expect(s.y).toBe(175 - HAY_TOP);
+      } else if (s.state !== 'walk' && s.where === 'yard') expect(s.y).toBe(GROUND);
+    }
+    expect(sat).toBeGreaterThan(60 * 8);
+    expect(h.drainEvents().some((e) => e.type === 'toast' && e.text.includes('hay bale'))).toBe(true);
+    // up on the bale when it is put away: she hops straight down
+    m.lead.goTo({ where: 'yard', x: 120 }, 'bale');
+    for (let i = 0; i < 60 * 20 && m.lead.s.state !== 'bale'; i++) h.update(1 / 60, 1 / 60, DAY);
+    expect(m.lead.s.state).toBe('bale');
+    h.decor().toggle('hay');
+    for (let i = 0; i < 60 * 3; i++) h.update(1 / 60, 1 / 60, DAY);
+    expect(m.lead.s.y).toBe(GROUND);
   });
 });
