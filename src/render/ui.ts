@@ -1,4 +1,4 @@
-import { wordSpans, type Speaker } from '../core/speech';
+import { spokenText, wordSpans, type Speaker } from '../core/speech';
 import type { Surface } from './surface';
 
 type Child = Node | string | null | undefined | false;
@@ -41,31 +41,74 @@ export function fitCanvas(canvas: HTMLCanvasElement, boxW: number, boxH: number)
   canvas.style.height = `${canvas.height * scale}px`;
 }
 
+/**
+ * How long a message stays up at the least: long enough for a child who is still learning
+ * to read to get through it, a little under a second a word, on top of a few seconds to notice it.
+ */
+export function readingMs(text: string): number {
+  const words = spokenText(text).split(/\s+/).filter(Boolean).length;
+  return 2500 + words * 700;
+}
+
+/** How many messages are on screen at once; any more wait their turn rather than push one off. */
+export const MAX_TOASTS = 3;
+
 export class Toasts {
   readonly root = el('div', { id: 'toasts', role: 'status', 'aria-live': 'polite' });
+  /** Messages waiting for room on screen, oldest first. */
+  private waiting: string[] = [];
+  /** Text of the messages on screen. */
+  private showing = new Set<string>();
 
   constructor(private readonly speaker?: Speaker) {}
 
-  /** Show a message; it is also read aloud, and stays up until it has been. Tap it to hear it again. */
-  show(text: string, ms = 3800): void {
-    while (this.root.childElementCount >= 3) this.root.firstElementChild?.remove();
+  /**
+   * Show a message. It is read aloud and stays up until it has been read and a child has had
+   * time to read it too. Tap it to hear it again (which also keeps it up longer). The same
+   * message is never shown twice at once.
+   */
+  show(text: string): void {
+    if (this.showing.has(text) || this.waiting.includes(text)) return;
+    if (this.showing.size >= MAX_TOASTS) {
+      this.waiting.push(text);
+      return;
+    }
+    this.display(text);
+  }
+
+  private display(text: string): void {
+    this.showing.add(text);
     const { nodes, marks } = wordSpans(text);
     const t = el('button', { class: 'toast', type: 'button' }, ...nodes);
-    t.addEventListener('click', () => this.speaker?.sayNow(text, marks));
     this.root.append(t);
     let shown = false;
     let spoken = !this.speaker?.enabled;
+    let timer = 0;
     const close = () => {
-      if (shown && spoken) t.remove();
+      if (!shown || !spoken || !t.isConnected) return;
+      t.remove();
+      this.showing.delete(text);
+      const next = this.waiting.shift();
+      if (next !== undefined) this.display(next);
     };
-    setTimeout(() => ((shown = true), close()), ms);
-    this.speaker?.say(text, marks, () => setTimeout(() => ((spoken = true), close()), 1200));
-    // removed early (too many at once): don't read it any more
-    new MutationObserver((_, obs) => {
-      if (t.isConnected) return;
-      obs.disconnect();
-      this.speaker?.drop(marks);
-    }).observe(this.root, { childList: true });
+    const wait = () => {
+      clearTimeout(timer);
+      shown = false;
+      timer = window.setTimeout(() => ((shown = true), close()), readingMs(text));
+    };
+    const read = (now: boolean) => {
+      spoken = !this.speaker?.enabled;
+      const done = () => setTimeout(() => ((spoken = true), close()), 1200);
+      if (now) this.speaker?.sayNow(text, marks, done);
+      else this.speaker?.say(text, marks, done);
+    };
+    // a tap reads it again, and gives it a fresh while on screen
+    t.addEventListener('click', () => {
+      wait();
+      read(true);
+    });
+    wait();
+    read(false);
   }
 }
 

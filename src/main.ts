@@ -835,4 +835,4 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', persist);
 
-if (debug) Object.assign(window, { critters: { habitats, save, persist, setSpeed: (v: number) => (speed = v) } });
+if (debug) Object.assign(window, { critters: { habitats, save, persist, toasts, setSpeed: (v: number) => (speed = v) } });
