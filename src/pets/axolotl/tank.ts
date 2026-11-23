@@ -3,61 +3,12 @@ import type { Env } from '../../core/time';
 import { drawGlassTank } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
 import { drawAxolotl } from './art';
-import { AXO, Axolotl, MORPHS, newAxoState, TANK, type DecorId, type Morph } from './model';
-
-const WATER = [0x58b7bd, 0x3d9aa8, 0x2c7d93, 0x20647f, 0x194f69];
-const PEBBLE = [0xd2c2a2, 0xb3a283, 0x94846a, 0x766856, 0x5c5145];
-const STONE = [0xa9aaa4, 0x868781, 0x65665f, 0x494a45, 0x31322f];
-const WOOD = [0x9a7850, 0x7a5c3a, 0x5a4229, 0x3e2c1b];
-const LEAF_BACK = [0x3f8f5a, 0x2f7448, 0x235a3a, 0x18432c];
-const LEAF = [0x7fc85c, 0x55a844, 0x3a8636, 0x27652b];
-
-const DECOR: { id: DecorId; icon: string; label: string }[] = [
-  { id: 'cave', icon: '🪨', label: 'Cave' },
-  { id: 'fern', icon: '🌿', label: 'Fern' },
-  { id: 'wood', icon: '🪵', label: 'Wood' },
-  { id: 'bubbler', icon: '🫧', label: 'Bubbles' },
-];
-
-const gravelTop = (x: number): number =>
-  TANK.gravel + Math.round(Math.sin(x * 0.045) * 2 + Math.sin(x * 0.13 + 1) * 1.2);
-
-/** Wavy plant blade that sways more toward its tip. */
-function blade(
-  sf: Surface, x0: number, y0: number, len: number, lean: number, width: number,
-  ramp: readonly number[], t: number, phase: number, haze: number,
-): void {
-  for (let i = 0; i < len; i++) {
-    const f = i / len;
-    const w = Math.max(1, Math.round(width * Math.sin(Math.PI * Math.min(1, 0.15 + f * 0.85)) ** 0.6));
-    const cx = x0 + lean * f * f * len * 0.35 + Math.sin(t * 0.9 + phase + f * 2.4) * 3.5 * f * f;
-    const y = y0 - i;
-    for (let j = 0; j < w; j++) {
-      const x = Math.round(cx - w / 2 + j);
-      let c = ramp[j === 0 ? 2 : j === w - 1 && w > 2 ? 3 : 1];
-      if (w >= 3 && j === Math.floor(w / 2)) c = ramp[0]; // midrib catches the light
-      if (hash2(x0 + i, j, 5) > 0.93) c = ramp[3];
-      sf.px(x, y, haze > 0 ? mix(c, WATER[2], haze) : c);
-    }
-  }
-}
-
-function caveShape(x: number, y: number): 'rock' | 'hole' | null {
-  const dx = x - TANK.caveX, dy = y - (TANK.gravel + 2);
-  if (dy > 0) return null;
-  const bump = hash2(Math.round(x / 3), 0, 9) * 0.12;
-  const outer = (dx / 42) ** 2 + (dy / 27) ** 2;
-  if (outer > 1 - bump) return null;
-  const inner = (dx / 29) ** 2 + (dy / 16) ** 2;
-  return inner < 1 ? 'hole' : 'rock';
-}
-
-function stoneColor(x: number, y: number, light: number): number {
-  const n = hash2(x >> 1, y >> 1, 11) * 0.25 + hash2(x, y, 12) * 0.12;
-  return dither(STONE, clamp(1 - light + n - 0.1, 0, 1), x, y);
-}
+import { AQUA_DECOR, AQUA_DECOR_AREAS, aquaPreviewBg } from './decor';
+import { AXO, Axolotl, MORPHS, newAxoState, TANK, type Morph } from './model';
+import { blade, gravelTop, LEAF, LEAF_BACK, PEBBLE, STONE, stoneColor, WATER } from './scenery';
 
 export class AxolotlHabitat implements Habitat {
   readonly id = 'axolotl';
@@ -68,12 +19,19 @@ export class AxolotlHabitat implements Habitat {
   private bgKey = '';
   private events: UiEvent[] = [];
   private bubbleClock = 0;
-  private lastCare: number;
   private fullToast = 0;
+  private decorBox: DecorBox;
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Axolotl.load(saved, seed) : new Axolotl(newAxoState(seed));
-    this.lastCare = this.model.s.care;
+    // decorations are earned with care points
+    this.decorBox = new DecorBox({
+      items: AQUA_DECOR, areas: AQUA_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.care, previewBg: aquaPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -105,11 +63,13 @@ export class AxolotlHabitat implements Habitat {
     m.update(dt, slowDt, env);
     this.fullToast = Math.max(0, this.fullToast - dt);
 
-    if (m.s.decor.bubbler && m.s.waterChange === 0) {
+    // a stream of bubbles from the air stone, wherever it has been put (not while it is being moved)
+    const bubbler = m.decorAt('bubbler');
+    if (bubbler && m.s.waterChange === 0) {
       this.bubbleClock += dt;
       while (this.bubbleClock > 0.12) {
         this.bubbleClock -= 0.12;
-        this.particles.spawn('bubble', TANK.bubblerX + (Math.random() - 0.5) * 4, TANK.gravel - 4);
+        this.particles.spawn('bubble', bubbler.x + (Math.random() - 0.5) * 4, gravelTop(bubbler.x) - 4);
       }
     }
 
@@ -141,12 +101,8 @@ export class AxolotlHabitat implements Habitat {
     }
     m.fx.length = 0;
 
-    for (const d of DECOR) {
-      const need = AXO.decorUnlock[d.id];
-      if (need > 0 && this.lastCare < need && m.s.care >= need)
-        this.events.push({ type: 'toast', text: `New decoration unlocked: ${d.icon} ${d.label}!` });
-    }
-    this.lastCare = m.s.care;
+    for (const d of this.decorBox.newlyUnlocked()) this.events.push({ type: 'sound', name: 'pop' }, { type: 'toast', text: unlockText(d) });
+    this.decorBox.update(dt);
 
     this.particles.update(dt, TANK.surface + 1);
   }
@@ -173,9 +129,13 @@ export class AxolotlHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       m.finger = null;
+      this.decorBox.pointer('up', x, y);
       return;
     }
     switch (this.tool) {
+      case 'decorate':
+        if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
+        break;
       case 'siphon':
         if (m.siphon(x, y) === 0 && kind === 'down') this.particles.spawn('ripple', x, y);
         break;
@@ -200,28 +160,19 @@ export class AxolotlHabitat implements Habitat {
       { id: 'worm', icon: '🪱', label: 'Worm', kind: 'drag' },
       { id: 'siphon', icon: '🧹', label: 'Clean', kind: 'mode' },
       { id: 'water', icon: '💧', label: 'New water', kind: 'action', disabled: !m.canChangeWater() },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
-    for (const d of DECOR) {
-      const open = m.unlocked(d.id);
-      list.push({
-        id: `decor:${d.id}`,
-        icon: open ? d.icon : '🔒',
-        label: d.label,
-        kind: 'toggle',
-        on: open && m.s.decor[d.id],
-        disabled: !open,
-      });
-    }
     return list;
   }
 
   useTool(id: string): void {
     const m = this.model;
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     if (id === 'water') {
       if (m.startWaterChange()) this.events.push({ type: 'toast', text: 'Fresh water coming in!' });
     } else if (id === 'lamp') m.s.lamp = !m.s.lamp;
-    else if (id.startsWith('decor:')) m.toggleDecor(id.slice(6) as DecorId);
     else this.tool = id;
   }
 
@@ -281,10 +232,9 @@ export class AxolotlHabitat implements Habitat {
 
   // ---- drawing -----------------------------------------------------------
 
-  /** Everything that never moves: water gradient, gravel, rocks, decorations. */
+  /** Everything that never moves: water gradient, back wall, gravel and rocks. */
   private buildBackground(): void {
     const sf = this.bg;
-    const d = this.model.s.decor;
     for (let y = 0; y < VIEW_H; y++)
       for (let x = 0; x < VIEW_W; x++) {
         const depth = (y - TANK.surface) / (VIEW_H - TANK.surface);
@@ -305,52 +255,6 @@ export class AxolotlHabitat implements Habitat {
         const len = 30 + hash2(c, i, 51) * 90;
         blade(sf, cx + (i - 1.5) * 3, TANK.gravel + 2, len, (i - 1.5) * 0.5 + (hash2(c, i, 52) - 0.5) * 0.6, 2 + (hash2(c, i, 53) > 0.6 ? 1 : 0), LEAF_BACK, 0, c * 2 + i, 0.72 + hash2(c, i, 54) * 0.12);
       }
-    }
-
-    if (d.wood) {
-      // driftwood: a gnarled log leaning on the gravel with a forked branch, bark grain running along it
-      const limb = (pts: readonly (readonly [number, number])[], r0: number, r1: number) => {
-        let arc = 0;
-        for (let k = 1; k < pts.length; k++) {
-          const [ax, ay] = pts[k - 1], [bx, by] = pts[k];
-          const n = Math.ceil(Math.hypot(bx - ax, by - ay));
-          for (let i = 0; i <= n; i++) {
-            const f = i / n, g = (k - 1 + f) / (pts.length - 1);
-            const cx = ax + (bx - ax) * f, cy = ay + (by - ay) * f;
-            const r = r0 + (r1 - r0) * g + Math.sin((arc + i) * 0.4) * 0.4;
-            for (let j = -Math.ceil(r); j <= Math.ceil(r); j++) {
-              if (Math.abs(j) > r) continue;
-              let v = (j + r) / (2 * r) * 0.85;
-              if (hash2(Math.round(((j + r) / (2 * r)) * 5), Math.floor((arc + i) / 6), 21) > 0.7) v += 0.22;
-              if (j < -r + 1) v -= 0.15;
-              const x = Math.round(cx), y = Math.round(cy + j);
-              sf.px(x, y, dither(WOOD, clamp(v, 0, 1), x, y));
-              sf.px(x + 1, y, dither(WOOD, clamp(v + 0.05, 0, 1), x + 1, y));
-            }
-          }
-          arc += n;
-        }
-      };
-      limb([[84, TANK.gravel + 4], [104, 140], [126, 128], [150, 118], [168, 113]], 6.5, 2);
-      limb([[122, 131], [130, 116], [136, 102], [134, 90]], 3, 0.8);
-      limb([[150, 118], [162, 106], [176, 104]], 2.4, 0.8);
-      // little broad-leaved plants tied onto the wood
-      for (const [lx, ly, a] of [[118, 126, -2.3], [121, 124, -1.4], [124, 127, -0.6], [146, 114, -1.9], [149, 113, -1.0]] as const) {
-        const len = 9, wid = 3;
-        for (let t = 0; t <= len; t += 0.5) {
-          const w = wid * Math.sin(Math.PI * Math.min(1, t / len)) ** 0.7;
-          for (let u = -w; u <= w; u += 0.5) {
-            const x = Math.round(lx + Math.cos(a) * t - Math.sin(a) * u), y = Math.round(ly + Math.sin(a) * t + Math.cos(a) * u);
-            sf.px(x, y, Math.abs(u) < 0.5 ? LEAF_BACK[0] : u < 0 ? LEAF_BACK[1] : LEAF_BACK[2]);
-          }
-        }
-      }
-    }
-
-    if (d.cave) {
-      for (let y = TANK.gravel - 30; y <= TANK.gravel + 2; y++)
-        for (let x = TANK.caveX - 44; x <= TANK.caveX + 44; x++)
-          if (caveShape(x, y) === 'hole') sf.px(x, y, dither([0x0c1d26, 0x112934], hash2(x, y, 2), x, y));
     }
 
     // gravel bed: rounded pebbles of different sizes and colours, packed together
@@ -393,45 +297,13 @@ export class AxolotlHabitat implements Habitat {
           sf.px(x, y, stoneColor(x, y, clamp(0.75 - dy * -0.5 - dx * 0.2 + (dy < -0.5 ? 0.25 : 0), 0, 1)));
         }
     }
-    if (d.bubbler) {
-      const y = gravelTop(TANK.bubblerX) - 3;
-      // the airline tube running down the back from the lid
-      for (let ty = 8; ty < y - 1; ty++) {
-        sf.blend(TANK.bubblerX + 5, ty, 0xdff4f2, 0.35);
-        sf.blend(TANK.bubblerX + 6, ty, 0x8ab4b8, 0.3);
-      }
-      for (let k = 0; k < 4; k++) sf.blend(TANK.bubblerX + 5 - k, y - 1, 0xdff4f2, 0.4);
-      // a round, porous air stone
-      for (let dy = -3; dy <= 2; dy++)
-        for (let dx = -5; dx <= 5; dx++) {
-          if ((dx / 5.5) ** 2 + (dy / 3.2) ** 2 > 1) continue;
-          const t = 0.3 + dy * 0.12 + dx * 0.04 + (hash2(dx, dy, 44) > 0.75 ? 0.3 : 0);
-          sf.px(TANK.bubblerX + dx, y + 1 + dy, dither([0xb8c4cc, 0x8a96a0, 0x5e6870, 0x3a4248], clamp(t, 0, 1), TANK.bubblerX + dx, dy));
-        }
-    }
-  }
-
-  private drawCaveFront(sf: Surface): void {
-    for (let y = TANK.gravel - 30; y <= TANK.gravel + 2; y++)
-      for (let x = TANK.caveX - 44; x <= TANK.caveX + 44; x++) {
-        if (caveShape(x, y) !== 'rock') continue;
-        const dy = (y - (TANK.gravel + 2)) / 27;
-        const dx = (x - TANK.caveX) / 42;
-        const inner = ((x - TANK.caveX) / 29) ** 2 + ((y - TANK.gravel - 2) / 16) ** 2;
-        let light = 0.35 + -dy * 0.55 - dx * 0.15;
-        if (inner < 1.25) light -= 0.3; // lip of the opening falls into shadow
-        sf.px(x, y, stoneColor(x, y, clamp(light, 0, 1)));
-        // moss on top
-        if (dy < -0.82 && hash2(x, y, 8) > 0.35) sf.px(x, y, dither(LEAF_BACK, hash2(x, y, 3), x, y));
-      }
   }
 
   render(sf: Surface, time: number, env: Env): void {
     const m = this.model;
     const s = m.s;
-    const key = JSON.stringify(s.decor);
-    if (key !== this.bgKey) {
-      this.bgKey = key;
+    if (!this.bgKey) {
+      this.bgKey = 'built';
       this.buildBackground();
     }
     sf.copyFrom(this.bg);
@@ -457,11 +329,8 @@ export class AxolotlHabitat implements Habitat {
         const h = hash2(i, seed, 31), h2 = hash2(i, seed, 32);
         blade(sf, x + i * 5 - n * 2, gy(x), 60 + h * 62, (h2 - 0.5) * 0.5, 2 + (h2 > 0.6 ? 1 : 0), LEAF_BACK, time, i * 1.3 + seed, 0.35);
       }
-    if (s.decor.fern)
-      for (let i = 0; i < 8; i++) {
-        const h = hash2(i, 9, 33);
-        blade(sf, 206 + (i - 4) * 2, gy(206), 26 + h * 34, (i - 3.5) * 0.45, 5, LEAF, time, i * 0.8, 0);
-      }
+    // decorations, behind the axolotl (the cave's rock goes in front of it, below)
+    this.decorBox.draw(sf, time);
 
     // waste and food
     for (const w of s.wastes) {
@@ -505,7 +374,8 @@ export class AxolotlHabitat implements Habitat {
       grounded: lift < 2,
     });
 
-    if (s.decor.cave) this.drawCaveFront(sf);
+    this.decorBox.drawFront(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     // foreground plant, bottom left
     for (let i = 0; i < 5; i++)

@@ -34,8 +34,9 @@ function nearestFood(a: Axolotl): Food | null {
 
 function restSpot(a: Axolotl): void {
   const s = a.s;
-  if (s.decor.cave) {
-    s.tx = TANK.caveX;
+  const cave = a.decorAt('cave');
+  if (cave) {
+    s.tx = clamp(cave.x, TANK.minX, TANK.maxX);
     s.ty = TANK.floor;
   } else {
     s.tx = clamp(s.x, TANK.minX, TANK.maxX);
@@ -170,9 +171,10 @@ export function stepBehavior(a: Axolotl, dt: number, env: Env): void {
       break;
     case 'play': {
       // Loop around the bubble stream if there is one, otherwise do laps.
-      const cx = s.decor.bubbler ? TANK.bubblerX + 20 : 160;
+      const bubbler = a.decorAt('bubbler');
+      const cx = bubbler ? clamp(bubbler.x + (bubbler.x < 160 ? 20 : -20), TANK.minX + 26, TANK.maxX - 26) : 160;
       const ang = a.swimPhase * 0.25;
-      s.tx = clamp(cx + Math.cos(ang) * (s.decor.bubbler ? 26 : 70), TANK.minX, TANK.maxX);
+      s.tx = clamp(cx + Math.cos(ang) * (bubbler ? 26 : 70), TANK.minX, TANK.maxX);
       s.ty = 85 + Math.sin(ang * 2) * 30;
       if (rng.chance(dt * 0.8)) a.emit('bubble', s.x + s.facing * 16, s.y - 2);
       if (s.timer <= 0) choose(a, env);

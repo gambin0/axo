@@ -11,6 +11,9 @@ import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
 import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
 import { CrabHabitat } from '../pets/crab/tank';
+import { AQUA_DECOR, AQUA_DECOR_AREAS } from '../pets/axolotl/decor';
+import { AxolotlHabitat } from '../pets/axolotl/tank';
+import { Axolotl } from '../pets/axolotl/model';
 import { JAR_DECOR, JAR_DECOR_AREAS } from '../pets/butterfly/decor';
 import { ButterflyHabitat } from '../pets/butterfly/jar';
 import { FARM_DECOR, FARM_DECOR_AREAS } from '../pets/ants/decor';
@@ -35,7 +38,7 @@ const overlaps = (b: DecorBox) =>
   b.placed.some((p, i) => b.placed.some((q, j) => i < j && p.y === q.y && Math.abs(p.x - q.x) < (b.item(p.id)!.w + b.item(q.id)!.w) / 2));
 
 /** Every pet with decorations: how to make one, and how to give it progress. */
-const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; items: DecorItem[]; areas: DecorArea[]; earn: (h: Habitat, v: number) => void; prep?: (h: Habitat) => void }[] = [
+const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; items: DecorItem[]; areas: DecorArea[]; earn: (h: Habitat, v: number) => void; prep?: (h: Habitat) => void; starts?: number }[] = [
   {
     name: 'coop', make: (s, n) => new CoopHabitat(s, n), items: COOP_DECOR, areas: COOP_DECOR_AREAS,
     earn: (h, v) => ((h as CoopHabitat).model.s.friend = v),
@@ -53,6 +56,7 @@ const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; ite
     name: 'jar', make: (s, n) => new ButterflyHabitat(s, n), items: JAR_DECOR, areas: JAR_DECOR_AREAS,
     earn: (h, v) => Object.assign((h as ButterflyHabitat).model.s.bugs[0], v >= 30 ? { stage: 'fly', t: 0 } : { stage: v >= 20 ? 'pupa' : v >= 10 ? 'cat' : 'egg', t: (v % 10) / 10 }),
   },
+  { name: 'aquarium', make: (s, n) => new AxolotlHabitat(s, n), items: AQUA_DECOR, areas: AQUA_DECOR_AREAS, earn: (h, v) => ((h as AxolotlHabitat).model.s.care = v), starts: 1 },
   { name: 'tank', make: (s, n) => new CrabHabitat(s, n), items: TANK_DECOR, areas: TANK_DECOR_AREAS, earn: (h, v) => ((h as CrabHabitat).model.s.trust = v) },
 ];
 
@@ -131,7 +135,8 @@ describe('decorations in the coop and the cage', () => {
       k.earn(h, Math.max(...k.items.map((i) => i.need)));
       h.update(1 / 60, 1 / 60, DAY);
       expect(h.drainEvents().filter((e) => e.type === 'toast' && e.text.startsWith('New decoration'))).toHaveLength(k.items.length - 1);
-      for (const it of k.items) expect(box.toggle(it.id)).toBe('added');
+      expect(box.count()).toBe(k.starts ?? 0);
+      for (const it of k.items) if (!box.options().find((o) => o.id === it.id)?.placed) expect(box.toggle(it.id)).toBe('added');
       // every one fits on the floor, inside the scene
       const saved = h.serialize() as { decor: Placed[] };
       for (const o of k.items) {
@@ -143,7 +148,7 @@ describe('decorations in the coop and the cage', () => {
       // a save from before decorations has none
       const old = JSON.parse(JSON.stringify(saved));
       delete old.decor;
-      expect(k.make(old, 3).decor!().count()).toBe(0);
+      expect(k.make(old, 3).decor!().count()).toBe(k.starts ?? 0);
     });
 
   test('while decorating, taps move decorations and never poke the animal', () => {
@@ -197,5 +202,40 @@ describe('decorations in the coop and the cage', () => {
       h.render(sf, 10, DAY);
       shoot(`decor-${name}-decorating`, sf);
     }
+  });
+});
+
+describe('aquarium decorations', () => {
+  test('a save with the old on/off switches keeps the ones that were on, where they were', () => {
+    const old = { ...new Axolotl(new AxolotlHabitat(null, 1).model.s).serialize(), decor: { cave: true, fern: false, wood: true, bubbler: true } };
+    const h = new AxolotlHabitat(JSON.parse(JSON.stringify(old)), 1);
+    const placed = h.model.s.decor;
+    expect(placed.map((p) => p.id).sort()).toEqual(['bubbler', 'cave', 'wood']);
+    expect(placed.find((p) => p.id === 'cave')?.x).toBe(252);
+    expect(placed.find((p) => p.id === 'bubbler')?.x).toBe(60);
+    // and a brand new tank starts with just the cave
+    expect(new AxolotlHabitat(null, 2).model.s.decor.map((p) => p.id)).toEqual(['cave']);
+  });
+
+  test('the axolotl sleeps in the cave wherever it is put, and plays round the air stone', () => {
+    const h = new AxolotlHabitat(null, 3);
+    h.name = 'Mochi';
+    const m = h.model;
+    m.s.care = 99;
+    m.s.decor.splice(0, m.s.decor.length, { id: 'cave', x: 80, y: 152 }, { id: 'bubbler', x: 230, y: 152 });
+    const NIGHT = envAt(23);
+    for (let i = 0; i < 60 * 40; i++) h.update(1 / 60, 1 / 60, NIGHT);
+    expect(Math.abs(m.s.x - 80)).toBeLessThan(12);
+    // playing, it loops round the bubble stream wherever the air stone is
+    m.s.behavior = 'play';
+    m.s.timer = 30;
+    let near = 0;
+    for (let i = 0; i < 60 * 20; i++) {
+      m.update(1 / 60, 1 / 60, DAY);
+      m.s.behavior = 'play';
+      m.s.timer = 30;
+      if (Math.abs(m.s.x - 210) < 40) near++;
+    }
+    expect(near).toBeGreaterThan(60 * 10);
   });
 });

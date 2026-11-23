@@ -237,13 +237,6 @@ describe('axolotl', () => {
     expect(run()).toEqual(run());
   });
 
-  test('decorations unlock with care', () => {
-    const a = new Axolotl(newAxoState(10));
-    expect(a.toggleDecor('fern')).toBe(false);
-    a.s.care = AXO.decorUnlock.fern;
-    expect(a.toggleDecor('fern')).toBe(true);
-    expect(a.s.decor.fern).toBe(true);
-  });
 });
 
 describe('ant colony', () => {

@@ -17,7 +17,10 @@ test('aquarium renders every morph, day and night', () => {
     const h = new AxolotlHabitat(null, 7 + i);
     h.setMorph(morph);
     const s = h.model.s;
-    s.decor = { cave: true, fern: i > 0, wood: i > 1, bubbler: i > 2 };
+    s.decor = [{ id: 'cave', x: 252, y: 152 }];
+    if (i > 0) s.decor.push({ id: 'fern', x: 190, y: 152 });
+    if (i > 1) s.decor.push({ id: 'wood', x: 120, y: 152 });
+    if (i > 2) s.decor.push({ id: 'bubbler', x: 40, y: 152 });
     s.growth = i / 3;
     if (i === 1) {
       s.cleanliness = 20;

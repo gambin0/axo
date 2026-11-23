@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 import { stepBehavior } from './ai';
 
 export type Morph = 'leucistic' | 'wild' | 'golden' | 'melanoid';
@@ -33,9 +34,10 @@ export const TANK = {
   minX: 30,
   maxX: 290,
   minY: 26,
-  caveX: 252,
-  bubblerX: 60,
 };
+
+/** Where each decoration stood before they could be moved, for older saves. */
+const OLD_SPOTS: Record<string, number> = { cave: 252, fern: 206, wood: 130, bubbler: 60 };
 
 /** All tuning lives here. Rates are per second of pet time. */
 export const AXO = {
@@ -115,7 +117,8 @@ export interface AxoState {
   /** Recent pets; too many too fast is annoying. */
   petHeat: number;
   lamp: boolean;
-  decor: Record<DecorId, boolean>;
+  /** Decorations put out on the gravel. */
+  decor: Placed[];
   /** 0 when idle, otherwise progress 0..1 through a water change. */
   waterChange: number;
   waterCooldown: number;
@@ -147,7 +150,7 @@ export function newAxoState(seed: number, name = '', morph: Morph = 'leucistic')
     digest: 0,
     petHeat: 0,
     lamp: false,
-    decor: { cave: true, fern: false, wood: false, bubbler: false },
+    decor: [{ id: 'cave', x: OLD_SPOTS.cave, y: TANK.gravel }],
     waterChange: 0,
     waterCooldown: 0,
     rng: seed >>> 0,
@@ -184,7 +187,12 @@ export class Axolotl {
     if (raw && typeof raw === 'object') {
       const r = raw as Partial<AxoState>;
       Object.assign(base, r);
-      base.decor = { ...newAxoState(0).decor, ...(r.decor ?? {}) };
+      // older saves had an on/off switch for each decoration: put the ones that were on where they used to be
+      base.decor = Array.isArray(r.decor)
+        ? savedDecor(r.decor)
+        : r.decor && typeof r.decor === 'object'
+          ? Object.keys(OLD_SPOTS).filter((id) => (r.decor as unknown as Record<string, unknown>)[id] === true).map((id) => ({ id, x: OLD_SPOTS[id], y: TANK.gravel }))
+          : newAxoState(0).decor;
       base.foods = Array.isArray(r.foods) ? r.foods : [];
       base.wastes = Array.isArray(r.wastes) ? r.wastes : [];
       if (!MORPHS.includes(base.morph)) base.morph = 'leucistic';
@@ -234,8 +242,9 @@ export class Axolotl {
     return this.s.fullness < AXO.fullAt && this.s.stuffed <= AXO.stuffedLimit - 1;
   }
 
-  unlocked(id: DecorId): boolean {
-    return this.s.care >= AXO.decorUnlock[id];
+  /** A decoration that is out, if it is. */
+  decorAt(id: DecorId): Placed | undefined {
+    return this.s.decor.find((d) => d.id === id);
   }
 
   // ---- player actions ----------------------------------------------------
@@ -315,11 +324,6 @@ export class Axolotl {
     return true;
   }
 
-  toggleDecor(id: DecorId): boolean {
-    if (!this.unlocked(id)) return false;
-    this.s.decor[id] = !this.s.decor[id];
-    return true;
-  }
 
   // ---- simulation --------------------------------------------------------
 

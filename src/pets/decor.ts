@@ -1,5 +1,5 @@
 import { clamp } from '../core/rng';
-import type { Surface } from '../render/surface';
+import { Surface } from '../render/surface';
 import type { DecorOption, DecorPicker, Tool } from './types';
 
 /** Something a child can put out in a habitat. Drawn standing on (x, y), its bottom middle. */
@@ -13,6 +13,8 @@ export interface DecorItem {
   /** The pet's progress (friendship, trust, care) needed before it can be put out. */
   need: number;
   draw(sf: Surface, x: number, y: number, time: number): void;
+  /** A part drawn in front of the animals, for things they go inside (like a cave). */
+  front?(sf: Surface, x: number, y: number, time: number): void;
 }
 
 /** A strip of floor where decorations can stand: from x0 to x1, on the line y. */
@@ -113,8 +115,23 @@ export class DecorBox implements DecorPicker {
       locked: level < it.need,
       progress: it.need > 0 ? clamp(level / it.need, 0, 1) : 1,
       preview: (sf: Surface) => {
+        // something too big for the picture is drawn larger and shrunk to fit
+        const k = Math.max(1, (it.w + 12) / sf.w, (it.h + 10) / sf.h);
         this.setup.previewBg(sf);
-        it.draw(sf, Math.round(sf.w / 2), sf.h - 5, 0);
+        if (k === 1) {
+          it.draw(sf, Math.round(sf.w / 2), sf.h - 5, 0);
+          it.front?.(sf, Math.round(sf.w / 2), sf.h - 5, 0);
+          return;
+        }
+        // drawn on a big blank picture, then only the item's own pixels are shrunk onto the background
+        const big = new Surface(Math.ceil(sf.w * k), Math.ceil(sf.h * k));
+        it.draw(big, Math.round(big.w / 2), big.h - Math.round(5 * k), 0);
+        it.front?.(big, Math.round(big.w / 2), big.h - Math.round(5 * k), 0);
+        for (let y = 0; y < sf.h; y++)
+          for (let x = 0; x < sf.w; x++) {
+            const j = (Math.min(big.h - 1, Math.floor(y * k)) * big.w + Math.min(big.w - 1, Math.floor(x * k))) * 4;
+            if (big.data[j + 3] > 0) sf.data.set(big.data.subarray(j, j + 4), (y * sf.w + x) * 4);
+          }
       },
     }));
   }
@@ -215,6 +232,11 @@ export class DecorBox implements DecorPicker {
     }
   }
 
+  /** The front parts of placed decorations, drawn after the animals. */
+  drawFront(sf: Surface, time: number): void {
+    for (const p of [...this.placed].sort((a, b) => a.y - b.y)) this.item(p.id)?.front?.(sf, p.x, p.y, time);
+  }
+
   /** While decorating: the floor strips where things can go, and the one being dragged, lifted up. */
   drawDecorating(sf: Surface, time: number): void {
     // marching dashes, dark and light, so they show on grass and on pale bedding alike
@@ -230,5 +252,6 @@ export class DecorBox implements DecorPicker {
     if (!it) return;
     for (let dx = -Math.round(it.w / 2); dx <= Math.round(it.w / 2); dx++) sf.blend(h.x + dx, h.y + 1, 0x000000, 0.25);
     it.draw(sf, h.x, h.y - 4, time);
+    it.front?.(sf, h.x, h.y - 4, time);
   }
 }
