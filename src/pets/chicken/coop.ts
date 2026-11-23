@@ -6,8 +6,11 @@ import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
 import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
 import { BREEDS, drawChicken, drawEgg, type ChickPose, type ChickPoseName } from './art';
 import {
-  BROODER, CHOCOLATE, Chicken, COOP, CORN, GROUND, HEN, NEST, newChickenState, PERCH, RAMP, SPOT, STAGE, SWING, TREATS, YARD, type Pt,
+  Bird, BROODER, CHOCOLATE, COOP, CORN, Flock, GROUND, HEN, NEST, newFlockState, PERCH, RAMP, SPOT, STAGE, SWING, TREATS, YARD, type Pt,
 } from './model';
+
+/** Names offered for a new chick when the child does not pick one. */
+const CHICK_NAMES = ['Pip', 'Nugget', 'Peep', 'Sunny', 'Biscuit', 'Clover', 'Pebble', 'Dot'];
 
 const GRASS = [0x3a7030, 0x4e8c38, 0x66a844, 0x84c056, 0xa4d470];
 const DIRT = [0x6a4a2e, 0x8a6642, 0xa8845a, 0xc4a276, 0xdcc09a];
@@ -52,7 +55,7 @@ const UNLOCK_TEXT: Record<string, (n: string) => string> = {
 export class CoopHabitat implements Habitat {
   readonly id = 'chicken';
   tool = 'hand';
-  model: Chicken;
+  model: Flock;
   private particles = new Particles();
   private bg = new Surface(VIEW_W, VIEW_H);
   /** Which pixels of the background are open sky, for clouds and stars. */
@@ -61,28 +64,30 @@ export class CoopHabitat implements Habitat {
   private events: UiEvent[] = [];
   private said = new Set<string>();
   private holding = false;
-  private lastState = '';
+  private lastState = new Map<number, string>();
 
   constructor(saved: unknown, seed: number) {
-    this.model = saved ? Chicken.load(saved, seed) : new Chicken(newChickenState(seed));
+    this.model = saved ? Flock.load(saved, seed) : new Flock(newFlockState(seed));
   }
 
+  /** The pet's name is the first bird's. */
   get name(): string {
-    return this.model.s.name;
+    return this.model.lead.s.name;
   }
   set name(v: string) {
-    this.model.s.name = v;
+    this.model.lead.s.name = v;
   }
 
-  private who(): string {
-    return this.model.s.name || 'Your chick';
+  private who(b?: Bird): string {
+    return b?.s.name || (b && b !== this.model.lead ? 'The new chick' : this.model.lead.s.name || 'Your chick');
   }
 
   looks(): Looks {
+    const lead = this.model.lead.s;
     return {
       what: 'colour',
       names: BREEDS.map((b) => b.name),
-      current: this.model.s.breed,
+      current: lead.breed,
       // the chick, and the hen it will grow into
       preview: (sf, i) => {
         for (let y = 0; y < sf.h; y++) for (let x = 0; x < sf.w; x++) sf.px(x, y, y < sf.h - 7 ? mix(0xcfe6f4, 0x84c4ec, 1 - y / sf.h) : dither(GRASS, 0.5 + (y - sf.h) / 20, x, y));
@@ -93,8 +98,24 @@ export class CoopHabitat implements Habitat {
         sf.px(41, sf.h - 15, 0xffffff);
         drawChicken(sf, { ...base, x: 58, y: sf.h - 3, grow: 1 });
       },
-      choose: (i) => (this.model.s.breed = i),
+      choose: (i) => (lead.breed = i),
     };
+  }
+
+  newcomer(): { ask: string; fallback: string } | null {
+    const b = this.model.unnamed();
+    if (!b) return null;
+    const taken = new Set(this.model.birds.map((x) => x.s.name));
+    const fallback = CHICK_NAMES.find((n) => !taken.has(n)) ?? 'Peep';
+    return { ask: 'A new chick hatched! What will you call it?', fallback };
+  }
+
+  nameNewcomer(name: string): void {
+    const b = this.model.unnamed();
+    if (!b) return;
+    b.s.name = name;
+    this.events.push({ type: 'toast', text: `Hello, ${name}! Chicks can't keep warm on their own yet, so ${name} stays near the heat lamp.` });
+    this.events.push({ type: 'sound', name: 'cheep' });
   }
 
   // ---- simulation --------------------------------------------------------
@@ -109,8 +130,9 @@ export class CoopHabitat implements Habitat {
       this.said.add(key);
       toast(text);
     };
-    const n = this.who();
     for (const fx of m.fx) {
+      const b = fx.bird !== undefined ? m.bird(fx.bird) : undefined;
+      const n = this.who(b);
       switch (fx.kind) {
         case 'heart':
           this.particles.spawn('heart', fx.x, fx.y);
@@ -147,13 +169,14 @@ export class CoopHabitat implements Habitat {
         case 'crack':
           this.particles.spawn('crumb', fx.x, fx.y, 0xf4ece0);
           sound('tap');
-          once('crack', 'The egg is wobbling! Something inside is tapping to get out…');
+          once(`crack:${fx.bird}`, 'The egg is wobbling! Something inside is tapping to get out…');
           break;
         case 'hatch':
           for (let i = 0; i < 6; i++) this.particles.spawn('crumb', fx.x, fx.y, 0xf4ece0);
           this.particles.spawn('sparkle', fx.x, fx.y - 4);
           sound('hatch');
-          toast(`${n} hatched! Hello, little chick! Chicks can't keep warm on their own yet, so ${n} stays near the heat lamp.`);
+          // a new chick is named as soon as it is out; the first one already has its name
+          if (b && b.s.name) toast(`${n} hatched! Hello, little chick! Chicks can't keep warm on their own yet, so ${n} stays near the heat lamp.`);
           break;
         case 'cheep':
           sound('cheep');
@@ -213,8 +236,21 @@ export class CoopHabitat implements Habitat {
           sound('cluck');
           if (!this.said.has('egg')) {
             this.said.add('egg');
-            toast(`${n} laid an egg! Tap the nest box to collect it. Without a rooster there is no chick inside: it's just an egg.`);
+            toast(`${n} laid an egg! Tap the nest box to collect it, or drag 🥚 to the heat lamp to hatch it into a chick.`);
           } else toast(`${n} laid an egg!`);
+          break;
+        case 'broody':
+          for (let i = 0; i < 3; i++) this.particles.spawn('heart', fx.x + i * 5 - 5, fx.y);
+          sound('cluck');
+          toast(`${n} has gone broody! She's sitting on her egg to keep it warm, and in about half a day it will hatch.`);
+          break;
+        case 'incubate':
+          this.particles.spawn('sparkle', fx.x, fx.y);
+          sound('plop');
+          if (!this.said.has('incubate')) {
+            this.said.add('incubate');
+            toast('The egg is snug in the warm straw under the heat lamp. In about half a day, a chick will hatch!');
+          } else toast('Another egg is keeping warm under the lamp.');
           break;
         case 'collect': {
           this.particles.spawn('sparkle', fx.x, fx.y);
@@ -226,10 +262,13 @@ export class CoopHabitat implements Habitat {
       }
     }
     m.fx.length = 0;
-    if (s.state !== this.lastState) {
-      if (s.state === 'dust') once('dust', `${n} is having a dust bath! Rolling in dry dirt keeps feathers clean.`);
-      if (s.state === 'swing') once('swing', `${n} is on the swing! Wheee!`);
-      this.lastState = s.state;
+    for (const b of m.birds) {
+      const st = b.s.state;
+      if (st !== this.lastState.get(b.s.id)) {
+        if (st === 'dust') once('dust', `${this.who(b)} is having a dust bath! Rolling in dry dirt keeps feathers clean.`);
+        if (st === 'swing') once('swing', `${this.who(b)} is on the swing! Wheee!`);
+        this.lastState.set(b.s.id, st);
+      }
     }
     this.particles.update(dt, 0, GROUND);
   }
@@ -239,18 +278,26 @@ export class CoopHabitat implements Habitat {
   }
 
   beginCatchup(): () => string[] {
-    const m0 = this.model, s0 = m0.s;
-    const stage = m0.stage(), eggs = s0.eggs, drops = s0.droppings.length;
+    const m0 = this.model;
+    const stages = new Map(m0.birds.map((b) => [b.s.id, b.stage()]));
+    const eggs = m0.s.nest.length, drops = m0.s.droppings.length, birds = m0.birds.length;
     return () => {
       const m = this.model, s = m.s;
       m.fx.length = 0;
       const out: string[] = [];
-      const n = this.who();
-      if (stage === 'egg') out.push(`${n} hatched`);
-      else if (m.stage() === 'pullet' && stage === 'chick') out.push(`${n} grew real feathers`);
-      else if (m.stage() === 'hen' && stage !== 'hen') out.push(`${n} grew up into a hen`);
-      else if (stage !== 'hen') out.push(`${n} grew a bit bigger`);
-      if (s.eggs > eggs) out.push(s.eggs - eggs === 1 ? 'there is an egg in the nest box' : `there are ${s.eggs} eggs in the nest box`);
+      for (const b of m.birds) {
+        const was = stages.get(b.s.id);
+        const n = this.who(b);
+        if (was === undefined) continue;
+        if (was === 'egg' && b.stage() === 'egg') {
+          if (b.s.hatchIn <= HEN.hatchOnReturn) out.push(b === m.lead ? `${n} is about to hatch` : 'an egg is about to hatch');
+        } else if (was === 'egg') out.push(`${n} hatched`);
+        else if (b.stage() === 'pullet' && was === 'chick') out.push(`${n} grew real feathers`);
+        else if (b.stage() === 'hen' && was !== 'hen') out.push(`${n} grew up into a hen`);
+        else if (was !== 'hen') out.push(`${n} grew a bit bigger`);
+      }
+      if (m.birds.length > birds) out.push("a broody hen's egg is about to hatch");
+      if (s.nest.length > eggs) out.push(s.nest.length - eggs === 1 ? 'there is an egg in the nest box' : `there are ${s.nest.length} eggs in the nest box`);
       if (s.feeder < 1) out.push('the feeder is empty');
       if (s.water <= HEN.floors.water + 0.01) out.push('the water is nearly gone');
       if (s.droppings.length > drops + 1) out.push('the run needs a clean');
@@ -276,12 +323,13 @@ export class CoopHabitat implements Habitat {
       return;
     }
     if (kind === 'down') {
-      if (m.hit(x, y)) m.poke();
-      else if (this.onNest(x, y) && m.s.eggs > 0) m.collect();
+      const b = m.birdAt(x, y);
+      if (b) m.poke(b);
+      else if (this.onNest(x, y) && m.s.nest.length > 0) m.collect();
       else m.tapYard(x, y);
     }
     // a finger held down in the run, below the fence top
-    if (y > 96 && y < GROUND + 6 && x < RAMP.foot.x && m.s.state !== 'egg') {
+    if (y > 96 && y < GROUND + 6 && x < RAMP.foot.x && m.hatched().length) {
       this.holding = true;
       m.finger = { x, y: Math.min(y, GROUND - 2) };
     } else if (kind === 'move') {
@@ -291,14 +339,17 @@ export class CoopHabitat implements Habitat {
   }
 
   tools(): Tool[] {
-    const s = this.model.s;
-    return [
+    const m = this.model, s = m.s;
+    const out: Tool[] = [
       { id: 'hand', icon: '✋', label: 'Hand', kind: 'mode' },
       ...TREATS.map((t, i) => ({ id: `treat:${i}`, icon: t.icon, label: t.name, kind: 'drag' as const })),
       { id: 'water', icon: '💧', label: 'Water', kind: 'drag', disabled: s.water > 0.9 },
       { id: 'clean', icon: '🧹', label: 'Clean', kind: 'mode' },
-      { id: 'light', icon: '💡', label: 'Light', kind: 'toggle', on: s.light },
     ];
+    // once there is a hen, an egg from the nest box can go under the lamp to hatch
+    if (m.hasHen() || s.nest.length) out.push({ id: 'egg', icon: '🥚', label: 'Hatch', kind: 'drag' });
+    out.push({ id: 'light', icon: '💡', label: 'Light', kind: 'toggle', on: s.light });
+    return out;
   }
 
   useTool(id: string): void {
@@ -306,9 +357,10 @@ export class CoopHabitat implements Habitat {
     else this.tool = id;
   }
 
-  private onBird(x: number, y: number): boolean {
-    const m = this.model, s = m.s;
-    return m.hit(x, y) || (s.where === 'yard' && Math.abs(x - s.x) < 26 && y > s.y - 40 && y < GROUND + 6);
+  /** The bird a treat dropped at (x, y) is meant for, if any. */
+  private birdNear(x: number, y: number): Bird | null {
+    const m = this.model;
+    return m.birdAt(x, y) ?? m.birds.find((b) => b.awake() && b.s.where === 'yard' && Math.abs(x - b.s.x) < 26 && y > b.s.y - 40 && y < GROUND + 6) ?? null;
   }
 
   private nearFeeder(x: number, y: number): boolean {
@@ -316,11 +368,17 @@ export class CoopHabitat implements Habitat {
   }
 
   drop(id: string, at: { x: number; y: number } | null): void {
-    const m = this.model, s = m.s;
+    const m = this.model;
     const toast = (text: string) => this.events.push({ type: 'toast', text });
     const tooMany = () => toast('There are enough treats on the grass already.');
     if (id === 'water') {
       if (!m.refill()) toast('The water is full.');
+      return;
+    }
+    if (id === 'egg') {
+      const r = m.incubate();
+      if (r === 'none') toast('There are no eggs in the nest box. Wait for a hen to lay one!');
+      if (r === 'full') toast(`The run is full! ${HEN.maxBirds} chickens is plenty, so you can collect the eggs instead.`);
       return;
     }
     const kind = Number(id.split(':')[1]);
@@ -330,53 +388,66 @@ export class CoopHabitat implements Habitat {
       if (!m.fillFeeder()) toast('The feeder is full.');
       return;
     }
-    if (s.state === 'egg' || s.state === 'hatch') {
+    const awake = m.birds.filter((b) => b.awake() && b.s.where === 'yard');
+    if (!m.hatched().length) {
       if (!m.dropTreat(at ? at.x : BROODER.x + 30, kind)) tooMany();
       return;
     }
-    // tapped: offer it if it is up and about in the run, otherwise drop it near it
-    const x = at ? at.x : s.where === 'yard' ? s.x + (s.facing || 1) * 12 : RAMP.foot.x - 20;
-    const offer = at ? this.onBird(at.x, at.y) : m.awake() && s.where === 'yard';
+    // tapped: offer it to a bird up and about in the run, otherwise drop it near one
+    const lead = awake[0] ?? m.lead;
+    const x = at ? at.x : lead.s.where === 'yard' ? lead.s.x + (lead.s.facing || 1) * 12 : RAMP.foot.x - 20;
+    const offer = at ? !!this.birdNear(at.x, at.y) : awake.length > 0;
     if (offer || kind === CHOCOLATE) {
       if (m.offerTreat(x, kind) === 'full') tooMany();
     } else if (!m.dropTreat(x, kind)) tooMany();
   }
 
   dropHint(id: string, x: number, y: number): DropHint {
-    const s = this.model.s;
+    const m = this.model;
     if (id === 'water') return { x: SPOT.water, y: GROUND - 14, ok: true };
+    if (id === 'egg') return { x: m.eggSpot(), y: GROUND - 4, ok: m.s.nest.length > 0 && m.room() > 0 };
     if (id === `treat:${CORN}` && this.nearFeeder(x, y)) return { x: SPOT.feeder, y: GROUND - 6, ok: true };
-    if (s.state !== 'egg' && this.onBird(x, y)) return { x: s.x, y: s.y - 6, ok: true };
+    const b = this.birdNear(x, y);
+    if (b) return { x: b.s.x, y: b.s.y - 6, ok: true };
     return { x: clamp(Math.round(x), YARD.left + 12, RAMP.foot.x - 8), y: GROUND - 1, ok: true };
   }
 
   stats(): Stat[] {
     const m = this.model, s = m.s;
-    const out: Stat[] = [
-      { icon: '🌽', label: 'Tummy', value: s.fullness },
-      { icon: '💧', label: 'Water', value: s.water * 100 },
-      { icon: '🧹', label: 'Clean', value: m.cleanliness() },
-      { icon: '💛', label: 'Friends', value: s.friend },
-    ];
-    if (m.stage() === 'hen') out.push({ icon: '🥚', label: 'Eggs', value: String(s.collected) });
-    else out.push({ icon: '🐣', label: 'Growing up', value: (s.grow / STAGE.hen) * 100 });
+    const out: Stat[] = [];
+    const fed = m.hatched();
+    // the hungriest bird, so a bar running low always means someone needs feeding
+    if (fed.length) out.push({ icon: '🌽', label: 'Tummy', value: Math.min(...fed.map((b) => b.s.fullness)) });
+    else out.push({ icon: '🌽', label: 'Tummy', value: m.lead.s.fullness });
+    out.push({ icon: '💧', label: 'Water', value: s.water * 100 }, { icon: '🧹', label: 'Clean', value: m.cleanliness() }, { icon: '💛', label: 'Friends', value: s.friend });
+    // the youngest bird still growing, or the egg count once everyone is grown
+    const young = m.birds.filter((b) => b.hatched() && b.stage() !== 'hen').sort((a, b) => a.s.grow - b.s.grow)[0];
+    if (young) out.push({ icon: '🐣', label: m.birds.length > 1 ? `${this.who(young)} growing` : 'Growing up', value: (young.s.grow / STAGE.hen) * 100 });
+    else if (m.hasHen()) out.push({ icon: '🥚', label: 'Eggs', value: String(s.collected) });
+    else out.push({ icon: '🐣', label: 'Growing up', value: 0 });
     return out;
   }
 
   status(_env: Env): Status {
     const m = this.model, s = m.s;
-    if (s.state === 'egg') return { text: 'About to hatch!', tone: 'good' };
-    if (s.state === 'hatch') return { text: 'Hatching!', tone: 'good' };
-    if (m.asleep()) return { text: 'Sleeping', tone: 'sleep' };
+    const birds = m.birds;
+    const any = (st: string) => birds.some((b) => b.s.state === st);
+    if (any('hatch')) return { text: 'Hatching!', tone: 'good' };
+    if (birds.some((b) => b.s.state === 'egg' && b.s.hatchIn < 60)) return { text: 'About to hatch!', tone: 'good' };
+    const up = m.hatched();
+    if (up.length && up.every((b) => b.asleep())) return { text: 'Sleeping', tone: 'sleep' };
     if (m.hungry()) return { text: 'Hungry!', tone: 'warn' };
     if (s.water < 0.05) return { text: 'Needs water', tone: 'warn' };
     if (m.cleanliness() < 45) return { text: 'Needs a clean', tone: 'warn' };
-    if (s.eggs > 0) return { text: 'Laid an egg!', tone: 'good' };
-    if (s.state === 'lay') return { text: 'Laying an egg…', tone: 'good' };
-    if (s.state === 'warm') return { text: 'Keeping warm', tone: 'good' };
-    if (s.state === 'swing') return { text: 'Swinging!', tone: 'good' };
-    if (s.state === 'dust') return { text: 'Dust bath', tone: 'good' };
-    return { text: m.isChick() ? 'Peeping' : 'Pecking about', tone: 'good' };
+    if (s.nest.length > 0) return { text: s.nest.length === 1 ? 'Laid an egg!' : 'Eggs to collect!', tone: 'good' };
+    if (any('lay')) return { text: 'Laying an egg…', tone: 'good' };
+    if (birds.some((b) => b.s.broody > 0)) return { text: 'Sitting on an egg', tone: 'good' };
+    if (birds.some((b) => b.s.state === 'egg')) return { text: 'Egg keeping warm', tone: 'good' };
+    const lead = m.lead;
+    if (lead.s.state === 'warm') return { text: 'Keeping warm', tone: 'good' };
+    if (any('swing')) return { text: 'Swinging!', tone: 'good' };
+    if (any('dust')) return { text: 'Dust bath', tone: 'good' };
+    return { text: up.length > 1 ? 'Pecking about together' : lead.isChick() ? 'Peeping' : 'Pecking about', tone: 'good' };
   }
 
   serialize(): unknown {
@@ -766,7 +837,7 @@ export class CoopHabitat implements Habitat {
       const d = Math.round(3 * Math.sqrt(1 - (dx / 12.5) ** 2));
       for (let k = 0; k <= d; k++) sf.px(fx + dx, GROUND - 5 + k, k === 0 ? METAL[3] : k === d ? METAL[0] : dither(METAL, 0.6 - k / 6 - (dx > 6 ? 0.3 : 0), fx + dx, k));
     }
-    const kernels = Math.round(s.feeder * 2.5);
+    const kernels = Math.round((s.feeder / m.feederMax()) * 20);
     for (let i = 0; i < kernels; i++) sf.px(fx - 10 + ((i * 7) % 21), GROUND - 6 - (i % 2), i % 3 === 0 ? 0xf8d850 : i % 3 === 1 ? 0xe8b030 : 0xc89028);
     // water in the clear drinker
     const wx = SPOT.water, top = GROUND - 24, bottom = GROUND - 5;
@@ -820,7 +891,7 @@ export class CoopHabitat implements Habitat {
 
   render(sf: Surface, time: number, env: Env): void {
     const m = this.model, s = m.s;
-    const lamp = m.isChick();
+    const lamp = m.hasChick();
     const swing = m.can('swing');
     const key = `${Math.floor(env.hour * 10)}|${lamp}|${swing}`;
     if (key !== this.bgKey) {
@@ -856,9 +927,10 @@ export class CoopHabitat implements Habitat {
       }
     }
 
-    // egg shell halves left in the straw for a while after hatching
-    if (s.state !== 'egg' && s.age < 600 && lamp) {
-      const c = BREEDS[s.breed].egg;
+    // egg shell halves left in the straw for a while after a chick hatches there
+    const fresh = m.birds.find((b) => b.hatched() && b.s.age < 600 && b.isChick());
+    if (fresh && lamp) {
+      const c = BREEDS[fresh.s.breed].egg;
       for (const [ox, flip] of [[BROODER.x - 6, 0], [BROODER.x + 1, 1]] as const)
         for (let dx = 0; dx < 5; dx++)
           for (let k = 0; k < 3; k++) {
@@ -868,46 +940,18 @@ export class CoopHabitat implements Habitat {
     }
 
     // the eggs in the nest box
-    for (let i = 0; i < s.eggs; i++) drawEgg(sf, NEST.x - 7 + i * 7, NEST.lip + 1, BREEDS[s.breed].egg, 0, 0, 0.8);
+    s.nest.forEach((breed, i) => drawEgg(sf, NEST.x - 7 + i * 7, NEST.lip + 1, BREEDS[breed].egg, 0, 0, 0.8));
 
-    if (s.state === 'egg' || s.state === 'hatch') {
-      const crack = s.state === 'hatch' ? 1 : clamp(1 - s.hatchIn / 14, 0, 1);
-      const wob = s.state === 'hatch' ? 0 : crack > 0 ? Math.sin(time * 18) * (Math.sin(time * 1.7) > 0.3 ? 1 : 0.15) * crack : 0;
-      groundShadow(sf, s.x, GROUND, 6, 0.3, 0x3a2a10);
-      if (s.state === 'egg') drawEgg(sf, s.x, GROUND + 1, BREEDS[s.breed].egg, crack, wob, 1.25);
-      else {
-        // the chick pops out between two halves of shell
-        const k = clamp(1 - s.timer / 2.5, 0, 1);
-        drawChicken(sf, { x: s.x + 1, y: GROUND, face: 1, pose: 'sit', grow: 0, breed: s.breed, phase: 0, breath: 0.5, blink: k < 0.4, fluff: 0.5 });
-        const c = BREEDS[s.breed].egg;
-        for (let dx = -5; dx <= 5; dx++)
-          for (let dy = 0; dy < 5; dy++) if ((dx / 5.4) ** 2 + ((dy - 4) / 4.5) ** 2 <= 1 && !(dy === 0 && dx % 2)) sf.px(s.x + dx, GROUND + 1 - (4 - dy), dx > 2 ? mix(c, 0x6a5a4a, 0.3) : c);
-        const lid = { x: s.x - 6 - k * 6, y: GROUND - 10 + k * 8 };
-        for (let dx = -4; dx <= 4; dx++) for (let dy = -3; dy <= 0; dy++) if ((dx / 4.4) ** 2 + ((dy + 0.5) / 3.6) ** 2 <= 1 && dy < 0) sf.px(lid.x + dx, lid.y + dy, c);
-      }
-    } else {
-      const pose = this.pose(time);
-      if (s.state === 'hop' && m.finger) this.drawFinger(sf, m.finger);
-      // a chick under the lamp, or a hen in the coop, sits in front of a soft shadow
-      if (s.state !== 'swing' && s.state !== 'hop') {
-        const floor = s.where === 'coop' ? (s.y < COOP.floor - 1 ? s.y : COOP.floor) : GROUND;
-        groundShadow(sf, s.x, floor, Math.round(5 + 8 * m.growth()), 0.25, 0x2a2010);
-      }
-      drawChicken(sf, pose);
-      // roosting: the perch goes in front of its feet
-      if (s.where === 'coop' && s.y < COOP.floor - 1 && s.state !== 'walk')
-        for (let x = PERCH.x0; x <= PERCH.x1; x++) {
-          sf.px(x, PERCH.y - 1, WOOD[0]);
-          sf.px(x, PERCH.y, WOOD[1]);
-          sf.px(x, PERCH.y + 1, WOOD[3]);
-        }
-    }
+    // birds further back (up in the coop, then by height) are drawn first
+    const order = [...m.birds].sort((a, b) => (a.s.where === b.s.where ? a.s.y - b.s.y || a.s.id - b.s.id : a.s.where === 'coop' ? -1 : 1));
+    for (const b of order) this.drawBird(sf, b, time);
     // the nest box lip goes over a hen sitting in it, and over the eggs
     for (let y = NEST.lip; y < COOP.floor; y++)
       for (let x = NEST.x0; x <= NEST.x1; x++) sf.px(x, y, y === NEST.lip ? WOOD[0] : dither(WOOD, 0.35 + (x > NEST.x1 - 4 ? 0.3 : 0) + hash2(x >> 2, y, 637) * 0.1, x, y));
-    if (s.eggs > 0 && Math.sin(time * 3) > 0.4) this.particles.spawn('sparkle', NEST.x - 7 + Math.floor(Math.random() * s.eggs) * 7, NEST.lip - 7);
+    if (s.nest.length > 0 && Math.sin(time * 3) > 0.4) this.particles.spawn('sparkle', NEST.x - 7 + Math.floor(Math.random() * s.nest.length) * 7, NEST.lip - 7);
 
-    if (this.holding && m.finger && s.state !== 'hop') this.drawFinger(sf, m.finger);
+    const hopping = m.birds.some((b) => b.s.state === 'hop');
+    if (this.holding && m.finger && !hopping) this.drawFinger(sf, m.finger);
     this.particles.render(sf);
 
     // night: dark unless the lantern is on; stars and the moon come out in the open sky
@@ -949,15 +993,59 @@ export class CoopHabitat implements Habitat {
     this.drawLantern(sf, s.light);
   }
 
-  /** How the bird looks right now. */
-  private pose(time: number): ChickPose {
-    const m = this.model, s = m.s;
+  /** One bird: an egg, a chick popping out of one, or a bird in its current pose. */
+  private drawBird(sf: Surface, b: Bird, time: number): void {
+    const m = this.model, s = b.s;
+    if (s.state === 'egg' || s.state === 'hatch') {
+      const crack = s.state === 'hatch' ? 1 : clamp(1 - s.hatchIn / 14, 0, 1);
+      // eggs wobble out of step with each other
+      const t = time + s.id * 1.3;
+      const wob = s.state === 'hatch' ? 0 : crack > 0 ? Math.sin(t * 18) * (Math.sin(t * 1.7) > 0.3 ? 1 : 0.15) * crack : 0;
+      const floor = s.y;
+      const c = BREEDS[s.breed].egg;
+      if (s.where === 'yard') groundShadow(sf, s.x, floor, 6, 0.3, 0x3a2a10);
+      if (s.state === 'egg') drawEgg(sf, s.x, floor + 1, c, crack, wob, s.where === 'coop' ? 0.9 : 1.25);
+      else {
+        // the chick pops out between two halves of shell
+        const k = clamp(1 - s.timer / 2.5, 0, 1);
+        drawChicken(sf, { x: s.x + 1, y: floor, face: 1, pose: 'sit', grow: 0, breed: s.breed, phase: 0, breath: 0.5, blink: k < 0.4, fluff: 0.5 });
+        for (let dx = -5; dx <= 5; dx++)
+          for (let dy = 0; dy < 5; dy++) if ((dx / 5.4) ** 2 + ((dy - 4) / 4.5) ** 2 <= 1 && !(dy === 0 && dx % 2)) sf.px(s.x + dx, floor + 1 - (4 - dy), dx > 2 ? mix(c, 0x6a5a4a, 0.3) : c);
+        const lid = { x: s.x - 6 - k * 6, y: floor - 10 + k * 8 };
+        for (let dx = -4; dx <= 4; dx++) for (let dy = -3; dy <= 0; dy++) if ((dx / 4.4) ** 2 + ((dy + 0.5) / 3.6) ** 2 <= 1 && dy < 0) sf.px(lid.x + dx, lid.y + dy, c);
+      }
+      return;
+    }
+    const pose = this.pose(b, time);
+    if (s.state === 'hop' && m.finger) this.drawFinger(sf, m.finger);
+    // a bird stands over a soft shadow, unless it is up on the swing or a hand
+    if (s.state !== 'swing' && s.state !== 'hop') {
+      const floor = s.where === 'coop' ? (s.y < COOP.floor - 1 ? s.y : COOP.floor) : GROUND;
+      groundShadow(sf, s.x, floor, Math.round(5 + 8 * b.growth()), 0.25, 0x2a2010);
+    }
+    // a broody hen's egg peeks out from under her
+    if (s.broody > 0 && (s.state === 'brood' || s.state === 'sleep') && s.where === 'coop') drawEgg(sf, s.x - 9 * s.facing, NEST.lip + 1, BREEDS[s.broodBreed].egg, 0, 0, 0.8);
+    drawChicken(sf, pose);
+    // roosting: the perch goes in front of its feet
+    if (s.where === 'coop' && s.y < COOP.floor - 1 && s.state !== 'walk')
+      for (let x = PERCH.x0; x <= PERCH.x1; x++) {
+        sf.px(x, PERCH.y - 1, WOOD[0]);
+        sf.px(x, PERCH.y, WOOD[1]);
+        sf.px(x, PERCH.y + 1, WOOD[3]);
+      }
+  }
+
+  /** How a bird looks right now. */
+  private pose(b: Bird, time: number): ChickPose {
+    const s = b.s;
     let pose: ChickPoseName = 'stand';
-    const at = m.drawnAt();
+    const at = b.drawnAt();
     let face = s.facing;
+    // birds keep their own time, so a flock does not move in step
+    time += s.id * 0.77;
     let phase = time * 2;
     let fluff = 0;
-    const g = m.growth();
+    const g = b.growth();
     switch (s.state) {
       case 'walk':
         pose = 'walk';
@@ -988,6 +1076,10 @@ export class CoopHabitat implements Habitat {
         pose = 'sit';
         fluff = 0.6;
         break;
+      case 'brood':
+        pose = 'sit';
+        fluff = 1;
+        break;
       case 'swing':
       case 'hop':
         pose = 'sit';
@@ -1014,7 +1106,7 @@ export class CoopHabitat implements Habitat {
         pose = Math.sin(time * 0.5 + s.x) > 0.2 ? 'stand' : Math.sin(time * 0.31 + s.x * 2) > 0 ? 'peck' : 'cheep';
         phase = time * 1.2;
     }
-    const blink = s.state === 'wake' ? Math.sin(time * 3) > -0.3 : s.state === 'warm' ? Math.sin(time * 0.8) > 0.3 : Math.sin(time * 1.1 + 2) > 0.985;
+    const blink = s.state === 'wake' ? Math.sin(time * 3) > -0.3 : s.state === 'warm' || s.state === 'brood' ? Math.sin(time * 0.8) > 0.3 : Math.sin(time * 1.1 + 2) > 0.985;
     // a sitting bird is drawn a touch lower, nestled in
     const y = at.y + (pose === 'sit' || pose === 'sleep' ? 1 : 0);
     return { x: at.x, y, face, pose, grow: lerp(0, 1, g), breed: s.breed, phase, breath: 0.5 + 0.5 * Math.sin(time * (s.state === 'sleep' ? 1.6 : 3)), blink, fluff };

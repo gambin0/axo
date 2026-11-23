@@ -80,4 +80,7 @@ export interface Habitat {
   drainEvents(): UiEvent[];
   /** How the pet can be made to look, if it has a choice. */
   looks?(): Looks;
+  /** An animal born in the habitat and waiting for a name, if any: the shell asks the child for one. */
+  newcomer?(): { ask: string; fallback: string } | null;
+  nameNewcomer?(name: string): void;
 }

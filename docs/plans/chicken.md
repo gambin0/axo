@@ -39,10 +39,23 @@ Growth runs at 30% speed when it is hungry or out of water. It never goes backwa
 
 Tummy (feeder, about 10 h), water (2 days), and clean (droppings every 2 h by day, plus old treats). Friendship is capped at 8 points a day. It unlocks treats from the hand at 15, the swing at 30, and hopping onto a finger held still at 50. Chicks follow a finger held in the run from the start.
 
+## The flock
+
+The first hen's eggs can hatch, so the coop grows into a flock of up to **4 birds** (eggs being kept warm count towards the four).
+
+- **Hatch tool** (🥚, shown once there is a hen): moves an egg from the nest box into the warm straw under the heat lamp. It hatches in about **12 hours**. Refused with a toast when the nest is empty or the run is full.
+- **Broody hens**: when a hen lays and there is room, there is a 1 in 5 chance she goes broody instead. She sits on the egg in the nest box for 12 hours, only getting off for a quick bite, and lays nothing meanwhile. The chick hatches in the nest box and walks down to the lamp.
+- **Hatching is always seen**: an egg that finishes warming while the app is closed waits 20 seconds after the child comes back, then hatches.
+- **Names**: the child is asked to name each new chick as soon as it hatches. Tapping away keeps a suggested name (Pip, Nugget, Peep and so on). Settings still renames only the first bird.
+- A chick takes its mother's breed. Friendship is shared by the whole flock. Each bird has its own tummy, warmth and growth.
+- The feeder holds 4 more portions for each bird after the first. Water and droppings scale with the flock's appetite, where a chick counts for less than a hen.
+- At night the hens sit side by side on the perch and the chicks huddle under the lamp. Only one bird uses the swing or hops onto a finger at a time, and two birds never chase the same last bite.
+- Saves from before the flock load as a flock of one.
+
 ## Tools
 
-Hand, Corn (fills the feeder, or scatters 5 kernels elsewhere), Worm (always first choice), Lettuce, Chocolate (refused, to teach that it is bad for chickens), Water, Clean, and Light.
+Hand, Corn (fills the feeder, or scatters 5 kernels elsewhere), Worm (always first choice), Lettuce, Chocolate (refused, to teach that it is bad for chickens), Water, Clean, Hatch (once there is a hen) and Light.
 
 ## Offline
 
-It eats from the feeder, with floors on fullness (15) and water. An egg left alone hatches. A hen lays by day, up to 3 eggs in the nest box. Neglect lets friendship slip, never below half its best.
+It eats from the feeder, with floors on fullness (15) and water. An egg left alone gets ready and hatches 20 seconds after the child returns. A hen lays by day, up to 3 eggs in the nest box, and may go broody. Neglect lets friendship slip, never below half its best.

@@ -238,6 +238,8 @@ function refreshUi(): void {
   if (!active) return;
   const h = habitats[active];
   setBadge(badge, h);
+  // a baby born while watching gets its name straight away, once no other dialog is open
+  if (h.newcomer?.() && !document.querySelector('.scrim')) newcomerDialog(active);
 
   statsBox.replaceChildren(
     ...h.stats().map((s) => {
@@ -411,14 +413,16 @@ document.addEventListener('pointercancel', cancelHold, true);
 
 // ---- dialogs -------------------------------------------------------------
 
-function dialog(...children: Node[]): { close(): void } {
+function dialog(...children: Node[]): { close(): void; onDismiss?: () => void } {
   const scrim = el('div', { class: 'scrim' }, el('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true' }, ...children));
-  const close = () => scrim.remove();
+  const d: { close(): void; onDismiss?: () => void } = { close: () => scrim.remove() };
   scrim.addEventListener('pointerdown', (ev) => {
-    if (ev.target === scrim) close();
+    if (ev.target !== scrim) return;
+    d.close();
+    d.onDismiss?.();
   });
   document.body.append(scrim);
-  return { close };
+  return d;
 }
 
 /** A grid of little pictures, one per way the pet can look, with the picked one outlined. */
@@ -495,6 +499,29 @@ function updateRow(): HTMLElement {
     } else status.textContent = `Version ${BUILD} · up to date`;
   });
   return el('div', { class: 'version' }, status, btn);
+}
+
+/** A baby was born in the habitat: ask the child to name it. Tapping away keeps the suggested name. */
+function newcomerDialog(id: PetId): void {
+  const h = habitats[id];
+  const who = h.newcomer?.();
+  if (!who) return;
+  const ask = readable(who.ask);
+  const input = el('input', { type: 'text', maxLength: 16, placeholder: who.fallback, 'aria-label': 'Name', autocomplete: 'off' });
+  let done = false;
+  const save = () => {
+    if (done) return;
+    done = true;
+    dlg.close();
+    h.nameNewcomer?.(input.value.trim().slice(0, 16) || who.fallback);
+    persist();
+    refreshUi();
+  };
+  input.addEventListener('keydown', (ev) => ev.key === 'Enter' && save());
+  const dlg = dialog(el('h3', { onpointerdown: () => hear(who.ask, ask.marks) }, ask.node), input, el('button', { class: 'big', type: 'button', onclick: save }, "That's its name!"));
+  dlg.onDismiss = save;
+  hear(who.ask, ask.marks);
+  input.focus();
 }
 
 function renameDialog(id: PetId): void {
