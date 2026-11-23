@@ -2,8 +2,10 @@ import { clamp, hash2 } from '../../core/rng';
 import type { Env } from '../../core/time';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Stat, Status, Tool, UiEvent } from '../types';
 import { ANTS_SPRITES, BROOD_SPRITES, FOOD_LOOK } from './art';
+import { FARM_DECOR, FARM_DECOR_AREAS, farmPreviewBg } from './decor';
 import {
   ANTS, Colony, FARM, JOBS, NODES, POLY, STAGE_NAMES, newColonyState, polyLength, polyPrefix,
   type AntFoodKind,
@@ -50,8 +52,18 @@ export class AntHabitat implements Habitat {
   private shook = false;
   private hatchToast = 0;
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Colony.load(saved, seed) : new Colony(newColonyState(seed));
+    // decorations are earned as the colony grows
+    this.decorBox = new DecorBox({
+      items: FARM_DECOR, areas: FARM_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.workers, previewBg: farmPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -67,6 +79,10 @@ export class AntHabitat implements Habitat {
     const m = this.model;
     m.update(dt, slowDt, env);
     this.hatchToast = Math.max(0, this.hatchToast - dt);
+    for (const d of this.decorBox.newlyUnlocked()) {
+      this.events.push({ type: 'sound', name: 'pop' }, { type: 'toast', text: unlockText(d) });
+    }
+    this.decorBox.update(dt);
 
     for (const fx of m.fx) {
       switch (fx.kind) {
@@ -136,6 +152,11 @@ export class AntHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       this.last = null;
+      this.decorBox.pointer('up', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (kind === 'down') {
@@ -161,11 +182,14 @@ export class AntHabitat implements Habitat {
     const list: Tool[] = [{ id: 'look', icon: '👆', label: 'Tap', kind: 'mode' }];
     for (const f of FOODS) list.push({ id: f.id, icon: f.icon, label: f.label, kind: 'drag' });
     list.push({ id: 'water', icon: '🚿', label: 'Water', kind: 'drag' });
+    list.push(DECORATE_TOOL);
     list.push({ id: 'red', icon: '🔴', label: 'Red light', kind: 'toggle', on: this.model.s.redLight });
     return list;
   }
 
   useTool(id: string): void {
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     if (id === 'red') this.model.s.redLight = !this.model.s.redLight;
     else this.tool = id;
   }
@@ -445,6 +469,10 @@ export class AntHabitat implements Habitat {
       if (f.kind === 'bug') for (let i = -1; i <= 1; i++) sf.px(f.x + i * 2, FARM.surface - 1, 0x1c241c);
       if (f.kind === 'fruit') sf.px(f.x, cy - ry - 1, 0x3f8a34);
     }
+
+    // decorations on the ground above the nest, behind the ants
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
 
     // the ants
     const frame = (walked: number) => Math.floor(walked / 2) & 1;

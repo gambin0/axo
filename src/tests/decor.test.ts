@@ -11,6 +11,8 @@ import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
 import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
 import { CrabHabitat } from '../pets/crab/tank';
+import { FARM_DECOR, FARM_DECOR_AREAS } from '../pets/ants/decor';
+import { AntHabitat } from '../pets/ants/farm';
 import { POND_DECOR, POND_DECOR_AREAS } from '../pets/pond/decor';
 import { PondHabitat } from '../pets/pond/pond';
 import { SNAIL_DECOR, SNAIL_DECOR_AREAS } from '../pets/snail/decor';
@@ -44,6 +46,7 @@ const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; ite
     earn: (h, v) => (h as TerrariumHabitat).model.s.snails.forEach((sn, _, all) => (sn.growth = Math.min(1, v / 20 / all.length))),
   },
   { name: 'pond', make: (s, n) => new PondHabitat(s, n), items: POND_DECOR, areas: POND_DECOR_AREAS, earn: (h, v) => ((h as PondHabitat).model.s.frogs[0].dev = Math.min(9, v / 10)) },
+  { name: 'farm', make: (s, n) => new AntHabitat(s, n), items: FARM_DECOR, areas: FARM_DECOR_AREAS, earn: (h, v) => ((h as AntHabitat).model.s.workers = Math.min(120, v)) },
   { name: 'tank', make: (s, n) => new CrabHabitat(s, n), items: TANK_DECOR, areas: TANK_DECOR_AREAS, earn: (h, v) => ((h as CrabHabitat).model.s.trust = v) },
 ];
 

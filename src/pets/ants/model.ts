@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 import { stepAnts, type Ant } from './ai';
 
 export interface Pt {
@@ -191,6 +192,8 @@ export interface ColonyState {
   foods: SurfaceFood[];
   nextFoodId: number;
   redLight: boolean;
+  /** Decorations put out on the ground above the nest. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -208,6 +211,7 @@ export function newColonyState(seed: number, name = ''): ColonyState {
     foods: [],
     nextFoodId: 1,
     redLight: false,
+    decor: [],
     rng: seed >>> 0,
   };
 }
@@ -248,6 +252,8 @@ export class Colony {
       base.dug = fresh.map((v, i) => Math.max(v, Array.isArray(r.dug) ? Number(r.dug[i]) || 0 : 0));
       base.brood = Array.isArray(r.brood) ? r.brood.filter((a) => typeof a === 'number') : [];
       base.foods = Array.isArray(r.foods) ? r.foods : [];
+      // decorations are checked against the farm's list by the habitat
+      base.decor = savedDecor(r.decor);
       base.workers = clamp(Math.floor(base.workers) || ANTS.startWorkers, ANTS.startWorkers, ANTS.maxWorkers);
       base.stage = Math.max(base.stage || 1, stageFor(base.workers));
     }
