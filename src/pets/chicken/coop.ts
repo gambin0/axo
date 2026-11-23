@@ -121,6 +121,15 @@ export class CoopHabitat implements Habitat {
     return { ask: 'A new chick hatched! What will you call it?', fallback };
   }
 
+  family(): { key: number; name: string }[] {
+    const lead = this.model.lead;
+    return this.model.birds.filter((b) => b !== lead && b.s.name).map((b) => ({ key: b.s.id, name: b.s.name }));
+  }
+
+  renameFamily(key: number, name: string): void {
+    if (this.model.bird(key) && this.model.bird(key) !== this.model.lead) this.model.name(key, name);
+  }
+
   nameNewcomer(name: string): void {
     const b = this.model.unnamed();
     if (!b) return;

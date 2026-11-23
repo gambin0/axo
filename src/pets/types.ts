@@ -106,6 +106,9 @@ export interface Habitat {
   /** An animal born in the habitat and waiting for a name, if any: the shell asks the child for one. */
   newcomer?(): { ask: string; fallback: string } | null;
   nameNewcomer?(name: string): void;
+  /** Other animals here with names of their own (a flock's chicks), so Settings can rename them too. */
+  family?(): { key: number; name: string }[];
+  renameFamily?(key: number, name: string): void;
   /** Decorations the child can put out, if the habitat has any. Its tools include a 'decorate' mode. */
   decor?(): DecorPicker;
 }

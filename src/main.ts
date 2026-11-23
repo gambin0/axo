@@ -632,9 +632,10 @@ function newcomerDialog(id: PetId): void {
   input.focus();
 }
 
-function renameDialog(id: PetId): void {
+/** Rename a pet, or one of the other animals living with it (a chick in the flock). */
+function renameDialog(id: PetId, member?: { key: number; name: string }): void {
   const h = habitats[id];
-  const old = h.name;
+  const old = member ? member.name : h.name;
   const q = `What's the new name for ${old} the ${PETS[id].kind}?`;
   const ask = readable(q);
   const input = el('input', { type: 'text', maxLength: 16, value: old, 'aria-label': 'New name', autocomplete: 'off' });
@@ -642,7 +643,8 @@ function renameDialog(id: PetId): void {
     const name = input.value.trim().slice(0, 16);
     dlg.close();
     if (!name || name === old) return;
-    h.name = name;
+    if (member) h.renameFamily?.(member.key, name);
+    else h.name = name;
     if (active === id) showTitle(id);
     persist();
     refreshUi();
@@ -738,10 +740,14 @@ function settingsDialog(): void {
   if (named.length) {
     parts.push(el('p', {}, 'Give a pet a new name:'));
     const grid = el('div', { class: 'renames' });
-    for (const id of named)
+    for (const id of named) {
       grid.append(
         el('button', { class: 'plain', type: 'button', onclick: () => (dlg.close(), renameDialog(id)) }, `✏️ ${habitats[id].name}`),
       );
+      // the rest of a family, like the chicks in a flock, can be renamed too
+      for (const member of habitats[id].family?.() ?? [])
+        grid.append(el('button', { class: 'plain', type: 'button', onclick: () => (dlg.close(), renameDialog(id, member)) }, `✏️ ${member.name}`));
+    }
     parts.push(grid);
   }
   const lookable = named.filter((id) => habitats[id].looks);

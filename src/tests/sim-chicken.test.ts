@@ -568,6 +568,30 @@ describe('chicken coop', () => {
     expect(h.drainEvents().some((e) => e.type === 'toast' && e.text.includes('Hello, Pip'))).toBe(true);
   });
 
+  test('the chicks can be renamed from Settings, but not the first bird through them', () => {
+    const h = new CoopHabitat(null, 8);
+    h.name = 'Nugget';
+    const m = h.model;
+    m.lead.s.state = 'idle';
+    m.lead.s.grow = STAGE.hen + 1;
+    expect(h.family()).toEqual([]);
+    m.s.nest = [0, 0];
+    m.incubate();
+    m.incubate();
+    // an egg, or a chick still waiting for a name, is not listed
+    expect(h.family()).toEqual([]);
+    m.birds[1].s.state = 'idle';
+    m.birds[1].s.name = 'Pip';
+    const [pip] = h.family();
+    expect(pip).toEqual({ key: m.birds[1].s.id, name: 'Pip' });
+    h.renameFamily(pip.key, 'Pippa');
+    expect(m.birds[1].s.name).toBe('Pippa');
+    h.renameFamily(m.lead.s.id, 'Oops');
+    expect(h.name).toBe('Nugget');
+    // and the new name is saved
+    expect(new CoopHabitat(JSON.parse(JSON.stringify(h.serialize())), 1).family()[0].name).toBe('Pippa');
+  });
+
   test('looks: every breed has a preview and can be chosen', () => {
     const h = new CoopHabitat(null, 5);
     const looks = h.looks();
