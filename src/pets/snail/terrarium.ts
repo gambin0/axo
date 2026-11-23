@@ -37,6 +37,7 @@ export class TerrariumHabitat implements Habitat {
   private toldFood = false;
 
   private decorBox: DecorBox;
+  private toldBridge = false;
 
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Terrarium.load(saved, seed) : new Terrarium(newTerrariumState(seed));
@@ -123,6 +124,12 @@ export class TerrariumHabitat implements Habitat {
           this.particles.spawn('sparkle', fx.x, fx.y);
           sound('pop');
           toast('Look in the soil! Tiny pearly eggs. They hatch in about two days.');
+          break;
+        case 'bridge':
+          if (!this.toldBridge) {
+            this.toldBridge = true;
+            toast('A snail is crossing the little bridge! Look at the slime trail it leaves on the planks.');
+          }
           break;
         case 'hatched':
           for (let i = 0; i < 4; i++) this.particles.spawn('sparkle', fx.x + (i - 2) * 5, fx.y);
@@ -455,9 +462,12 @@ export class TerrariumHabitat implements Habitat {
     if (s.eggs) drawEggs(sf, Math.round(s.eggs.x), groundY(Math.round(s.eggs.x)), s.eggs.t, time);
 
     // floor snails first, then the ones on the front glass
-    for (const sn of s.snails) if (sn.surface === 'floor') drawSnail(sf, sn, time, Math.sin(time * 2));
+    // a snail down at the front (crossing the bridge) is drawn after the decorations, in front of them
+    const atFront = (sn: (typeof s.snails)[number]) => sn.surface === 'floor' && sn.y > groundY(Math.round(sn.x)) + 2;
+    for (const sn of s.snails) if (sn.surface === 'floor' && !atFront(sn)) drawSnail(sf, sn, time, Math.sin(time * 2));
     // decorations along the front of the soil; snails on the glass stay in front of them
     this.decorBox.draw(sf, time);
+    for (const sn of s.snails) if (atFront(sn)) drawSnail(sf, sn, time, Math.sin(time * 2));
     if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     for (const sn of s.snails) if (sn.surface === 'glass') drawSnailGlass(sf, sn);
 

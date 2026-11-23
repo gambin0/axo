@@ -16,7 +16,7 @@ const stoneBump = (x: number): number => {
 /** Soil surface height at x: a gentle swell with a flat stone sitting in it. */
 export const groundY = (x: number): number => BOX.floor + Math.round(Math.sin(x * 0.05) * 1.5) - stoneBump(x);
 
-export type Behavior = 'idle' | 'glide' | 'eat' | 'rasp' | 'hide' | 'turn' | 'sleep' | 'sealed';
+export type Behavior = 'idle' | 'glide' | 'eat' | 'rasp' | 'hide' | 'turn' | 'sleep' | 'sealed' | 'bridge';
 export type Want = 'none' | 'food' | 'bone' | 'floor';
 
 export interface Snail {
@@ -48,6 +48,8 @@ export interface Snail {
   phase: number;
   /** Heading in radians while on the glass. */
   heading: number;
+  /** Crossing the little bridge: 0 to its end, 1 forward to it, 2 over it, 3 back to the soil. */
+  cross?: number;
 }
 
 export interface Food {
@@ -116,11 +118,18 @@ export interface TerrariumState {
 }
 
 export type SnailFxKind =
-  | 'heart' | 'no' | 'sparkle' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'plop' | 'wake' | 'laid' | 'hatched' | 'salt' | 'full';
+  | 'heart' | 'no' | 'sparkle' | 'drop' | 'ripple' | 'crumb' | 'zzz' | 'plop' | 'wake' | 'laid' | 'hatched' | 'salt' | 'full' | 'bridge';
 export interface SnailFx {
   kind: SnailFxKind;
   x: number;
   y: number;
+}
+
+/** Where a snail crossing the little bridge stands: on its arched planks, or on the soil just past its ends. */
+export function bridgeDeck(dx: number, y: number): number {
+  const a = Math.abs(dx);
+  if (a > 15) return y - 1 - Math.round((2 * Math.max(0, 19 - a)) / 4);
+  return y - 3 - Math.round(7 * (1 - (dx / 15) ** 2));
 }
 
 /** Body and shell sizes for a snail of the given growth. Shared by the model (for taps) and the art. */
@@ -453,6 +462,13 @@ export class Terrarium {
   /** Move toward (tx, ty) on the current surface. Returns true on arrival. */
   private walk(sn: Snail, dt: number, speed: number): boolean {
     if (sn.surface === 'floor') {
+      // back up from the front of the soil first, if it went down there to cross the bridge
+      const ground = groundY(Math.round(sn.x));
+      if (sn.y > ground + 0.5) {
+        sn.y = Math.max(ground, sn.y - speed * dt);
+        sn.phase += speed * dt * 0.45;
+        return false;
+      }
       const dx = sn.tx - sn.x;
       if (Math.abs(dx) < 1) return true;
       const step = Math.min(Math.abs(dx), speed * dt);
@@ -561,6 +577,45 @@ export class Terrarium {
           }
         }
         break;
+      case 'bridge': {
+        const speed = SNAIL.speed * (awake ? 1 : 0.6);
+        const br = this.bridge();
+        if (!br || sn.timer <= 0) sn.cross = Math.max(sn.cross ?? 3, 3);
+        if (sn.cross === 0) {
+          // along the soil to one end of the bridge
+          if (this.walk(sn, dt, speed)) sn.cross = 1;
+        } else if (sn.cross === 1 && br) {
+          // forward to the front, where the bridge stands
+          sn.y = Math.min(br.y - 1, sn.y + speed * dt);
+          sn.phase += speed * dt * 0.45;
+          this.note(sn, speed * dt);
+          if (sn.y >= br.y - 1) {
+            sn.cross = 2;
+            sn.tx = clamp(br.x + sn.facing * 19, BOX.minX, BOX.maxX);
+            this.emit('bridge', br.x, br.y - 14);
+          }
+        } else if (sn.cross === 2 && br) {
+          // up and over the arch, following its planks
+          const dx = sn.tx - sn.x;
+          const step = Math.min(Math.abs(dx), speed * dt);
+          sn.x += Math.sign(dx) * step;
+          sn.y = bridgeDeck(sn.x - br.x, br.y);
+          sn.phase += step * 0.45;
+          this.note(sn, step);
+          if (Math.abs(dx) < 1) sn.cross = 3;
+        } else {
+          // back up to the soil line, then carry on
+          const ground = groundY(Math.round(sn.x));
+          sn.y = Math.max(ground, sn.y - speed * dt);
+          sn.phase += speed * dt * 0.45;
+          if (sn.y <= ground) {
+            sn.cross = undefined;
+            sn.state = 'idle';
+            sn.timer = this.rng.range(1, 3);
+          }
+        }
+        break;
+      }
       case 'glide': {
         const speed = (sn.surface === 'floor' ? SNAIL.speed : SNAIL.glassSpeed) * (awake ? 1 : 0.6);
         if (this.walk(sn, dt, speed) || sn.timer <= 0) this.arrive(sn);
@@ -671,6 +726,17 @@ export class Terrarium {
       return;
     }
     const r = this.rng.next();
+    // the little bridge is there to be crossed
+    const br = this.bridge();
+    if (br && sn.surface === 'floor' && this.rng.chance(0.2) && !s.snails.some((o) => o !== sn && o.state === 'bridge')) {
+      sn.state = 'bridge';
+      sn.cross = 0;
+      sn.facing = sn.x < br.x ? 1 : -1;
+      sn.tx = clamp(br.x - sn.facing * 19, BOX.minX, BOX.maxX);
+      sn.timer = 120;
+      sn.want = 'none';
+      return;
+    }
     if (sn.surface === 'floor') {
       if (r < 0.25 && sn.growth > 0.2) {
         // climb the glass: turn to face it, then go up
@@ -692,6 +758,11 @@ export class Terrarium {
       sn.tx = clamp(sn.x + this.rng.range(-60, 60), BOX.minX, BOX.maxX);
       sn.ty = clamp(sn.y + this.rng.range(-40, 40), BOX.glassTop, BOX.glassBottom);
     }
+  }
+
+  /** The little bridge, if it is out on the soil. */
+  bridge(): Placed | undefined {
+    return this.s.decor.find((d) => d.id === 'bridge');
   }
 
   private goDown(sn: Snail): void {

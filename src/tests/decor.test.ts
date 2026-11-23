@@ -24,10 +24,12 @@ import { POND_DECOR, POND_DECOR_AREAS } from '../pets/pond/decor';
 import { PondHabitat } from '../pets/pond/pond';
 import { SNAIL_DECOR, SNAIL_DECOR_AREAS } from '../pets/snail/decor';
 import { TerrariumHabitat } from '../pets/snail/terrarium';
+import { bridgeDeck } from '../pets/snail/model';
 import { Surface } from '../render/surface';
 import { encodePng } from './png';
 
 const DAY = envAt(12);
+const NIGHT_LAMP = envAt(22);
 const item = (id: string, w: number, need = 0): DecorItem => ({ id, icon: '', label: id, w, h: 10, need, draw: (sf, x, y) => sf.px(x, y - 1, 0xffffff) });
 const ITEMS = [item('a', 20), item('b', 20), item('c', 20), item('d', 20), item('e', 20), item('big', 60), item('later', 10, 30)];
 
@@ -410,5 +412,36 @@ describe('animals use their decorations', () => {
     expect(feeling).toBeGreaterThan(60 * 3);
     expect(backOnSand).toBe(true);
     expect(told.some((t) => t.includes('big shell'))).toBe(true);
+  });
+
+  test('a snail crawls over the little bridge, following its arch, and back to the soil', () => {
+    const h = new TerrariumHabitat(null, 12);
+    h.name = 'Mossy';
+    const m = h.model;
+    m.s.lamp = true;
+    m.s.moisture = 90;
+    m.s.foods = [];
+    m.s.cuttlebone = 0;
+    m.s.decor.push({ id: 'bridge', x: 150, y: 170 });
+    let onTop = 0, crossed = false, back = false;
+    const told: string[] = [];
+    let startSide = 0;
+    for (let i = 0; i < 60 * 900 && !back; i++) {
+      m.s.snails.forEach((sn) => Object.assign(sn, { fullness: 100, calcium: 100 }));
+      h.update(1 / 60, 1 / 60, NIGHT_LAMP);
+      for (const e of h.drainEvents()) if (e.type === 'toast') told.push(e.text);
+      const sn = m.s.snails.find((x) => x.state === 'bridge');
+      if (!sn) continue;
+      if (sn.cross === 1 && !startSide) startSide = Math.sign(sn.x - 150);
+      if (sn.cross === 2) {
+        expect(sn.y).toBe(bridgeDeck(sn.x - 150, 170));
+        if (Math.abs(sn.x - 150) < 2) onTop++;
+      }
+      if (sn.cross === 3 && startSide && Math.sign(sn.x - 150) === -startSide) crossed = true;
+      if (crossed && sn.cross === 3 && sn.y <= 150) back = true;
+    }
+    expect(onTop).toBeGreaterThan(0);
+    expect(crossed).toBe(true);
+    expect(told.some((t) => t.includes('little bridge'))).toBe(true);
   });
 });
