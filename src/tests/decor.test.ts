@@ -9,6 +9,8 @@ import { CAGE_DECOR, CAGE_DECOR_AREAS } from '../pets/hamster/decor';
 import { CageHabitat } from '../pets/hamster/cage';
 import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
+import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
+import { CrabHabitat } from '../pets/crab/tank';
 import { Surface } from '../render/surface';
 import { encodePng } from './png';
 
@@ -33,6 +35,7 @@ const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; ite
   },
   { name: 'cage', make: (s, n) => new CageHabitat(s, n), items: CAGE_DECOR, areas: CAGE_DECOR_AREAS, earn: (h, v) => ((h as CageHabitat).model.s.trust = v) },
   { name: 'hive', make: (s, n) => new HiveHabitat(s, n), items: HIVE_DECOR, areas: HIVE_DECOR_AREAS, earn: (h, v) => ((h as HiveHabitat).model.s.workers = v) },
+  { name: 'tank', make: (s, n) => new CrabHabitat(s, n), items: TANK_DECOR, areas: TANK_DECOR_AREAS, earn: (h, v) => ((h as CrabHabitat).model.s.trust = v) },
 ];
 
 describe('decorations', () => {

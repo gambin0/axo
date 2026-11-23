@@ -1,5 +1,6 @@
 import { Rng, clamp } from '../../core/rng';
 import type { Env } from '../../core/time';
+import { savedDecor, type Placed } from '../decor';
 
 export interface Pt {
   x: number;
@@ -100,6 +101,8 @@ export interface CrabState {
   step: number;
   petHeat: number;
   lamp: boolean;
+  /** Decorations put out on the sand. */
+  decor: Placed[];
   rng: number;
 }
 
@@ -128,7 +131,7 @@ export function newCrabState(seed: number, name = ''): CrabState {
   return {
     name, size: CRAB.startSize, growth: 0.2, moult: 0, shell, spare: [], nextShell: 2, fav: rng.int(SHELL_PATTERNS),
     fullness: 60, thirst: 70, humidity: 65, trust: 10, food: 0.5, fresh: 0.8, salt: 0.8, chips: [],
-    x: 150, y: sandY(150), facing: 1, state: 'idle', timer: 2, tx: 150, step: -1, petHeat: 0, lamp: false, rng: rng.s,
+    x: 150, y: sandY(150), facing: 1, state: 'idle', timer: 2, tx: 150, step: -1, petHeat: 0, lamp: false, decor: [], rng: rng.s,
   };
 }
 
@@ -165,6 +168,8 @@ export class Crab {
       Object.assign(base, r);
       base.spare = Array.isArray(r.spare) ? r.spare : [];
       base.chips = Array.isArray(r.chips) ? r.chips : [];
+      // decorations are checked against the tank's list by the habitat
+      base.decor = savedDecor(r.decor);
       if (!r.shell) base.shell = newCrabState(seed).shell;
       base.size = clamp(Math.floor(base.size) || CRAB.startSize, 1, CRAB.maxSize);
       // Resume somewhere sensible rather than mid-action.

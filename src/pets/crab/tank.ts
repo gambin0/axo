@@ -3,8 +3,10 @@ import type { Env } from '../../core/time';
 import { drawDomeLamp, drawGlassTank, groundShadow } from '../../render/glass';
 import { Particles } from '../../render/particles';
 import { dither, mix, Surface, VIEW_H, VIEW_W } from '../../render/surface';
-import type { DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
+import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
+import type { DecorPicker, DropHint, Habitat, Looks, Stat, Status, Tool, UiEvent } from '../types';
 import { drawCrab, drawMound, drawShell, SHELL_HUES, shellRadius } from './art';
+import { TANK_DECOR, TANK_DECOR_AREAS, tankPreviewBg } from './decor';
 import { BRANCH, COCONUT, Crab, CRAB, DISH, newCrabState, sandY, SPARE_X, TANK, type Pt, type Shell } from './model';
 
 const SAND = [0xe8d6a8, 0xd2bc8a, 0xb89f70, 0x967f58];
@@ -27,8 +29,18 @@ export class CrabHabitat implements Habitat {
   private said = new Set<string>();
   private told = false;
 
+  private decorBox: DecorBox;
+
   constructor(saved: unknown, seed: number) {
     this.model = saved ? Crab.load(saved, seed) : new Crab(newCrabState(seed));
+    // decorations are earned with the crab's trust
+    this.decorBox = new DecorBox({
+      items: TANK_DECOR, areas: TANK_DECOR_AREAS, placed: () => this.model.s.decor, level: () => this.model.s.trust, previewBg: tankPreviewBg,
+    });
+  }
+
+  decor(): DecorPicker {
+    return this.decorBox;
   }
 
   get name(): string {
@@ -72,6 +84,11 @@ export class CrabHabitat implements Habitat {
       this.said.add(key);
       toast(text);
     };
+    for (const d of this.decorBox.newlyUnlocked()) {
+      sound('pop');
+      toast(unlockText(d));
+    }
+    this.decorBox.update(dt);
     if (!this.told && m.cramped() && !m.s.spare.length && m.s.moult === 0) {
       this.told = true;
       toast(`${this.who()} looks squished in that tiny shell. Tap 🐚 to offer a bigger one!`);
@@ -168,6 +185,11 @@ export class CrabHabitat implements Habitat {
     const m = this.model;
     if (kind === 'up') {
       m.finger = null;
+      this.decorBox.pointer('up', x, y);
+      return;
+    }
+    if (this.tool === 'decorate') {
+      if (!this.decorBox.pointer(kind, x, y) && kind === 'down') this.particles.spawn('ripple', x, y);
       return;
     }
     if (this.tool === 'tidy') {
@@ -190,12 +212,15 @@ export class CrabHabitat implements Habitat {
       { id: 'shell', icon: '🐚', label: 'Shell', kind: 'drag' },
       { id: 'chips', icon: '🥔', label: 'Crisps', kind: 'drag' },
       { id: 'tidy', icon: '🧹', label: 'Tidy', kind: 'mode' },
+      DECORATE_TOOL,
       { id: 'lamp', icon: '💡', label: 'Lamp', kind: 'toggle', on: m.s.lamp },
     ];
   }
 
   useTool(id: string): void {
     const m = this.model;
+    // anything still being dragged is set down first
+    this.decorBox.pointer('up', 0, 0);
     switch (id) {
       case 'mist':
         m.mist();
@@ -531,6 +556,9 @@ export class CrabHabitat implements Habitat {
       }
     }
 
+    // decorations along the front of the sand, in front of the crab
+    this.decorBox.draw(sf, time);
+    if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     this.particles.render(sf);
 
     // humid air: the glass mists up at the top, and droplets run down it
