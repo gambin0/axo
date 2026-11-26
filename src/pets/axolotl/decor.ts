@@ -4,8 +4,8 @@ import type { DecorArea, DecorItem } from '../decor';
 import { AXO, TANK } from './model';
 import { blade, gravelTop, LEAF, LEAF_BACK, stoneColor, WATER, WOOD } from './scenery';
 
-/** Anywhere along the gravel. */
-export const AQUA_DECOR_AREAS: DecorArea[] = [{ x0: 12, x1: 308, y: TANK.gravel }];
+/** Anywhere on the gravel, from the back to the front. */
+export const AQUA_DECOR_AREAS: DecorArea[] = [{ x0: 12, x1: 308, y: TANK.gravel, y1: TANK.gravel + 12 }];
 
 /** The cave: a mossy rock dome over a dark hollow the axolotl can rest in. */
 function caveShape(x: number, y: number, cx: number, base: number): 'rock' | 'hole' | null {

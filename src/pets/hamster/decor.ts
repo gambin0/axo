@@ -8,13 +8,10 @@ const BARK = [0x3e2614, 0x5e3a1e, 0x7e5430, 0x9e7046];
 const WOOD = [0x8a5e32, 0xb8844a, 0xd8a868, 0xecc68a];
 
 /**
- * Where decorations can stand: the bit of bedding between the house and the burrow, and the
- * bedding along the front on the right, where nothing is dug.
+ * Anywhere on the bedding, from its top (where the hamster can get to them) down to the front.
+ * Ones on the top stand behind the hamster; lower down they are in front of it.
  */
-export const CAGE_DECOR_AREAS: DecorArea[] = [
-  { x0: 57, x1: 87, y: GROUND },
-  { x0: 200, x1: 306, y: 171 },
-];
+export const CAGE_DECOR_AREAS: DecorArea[] = [{ x0: 12, x1: 308, y: GROUND, y1: 171 }];
 
 export const CAGE_DECOR: DecorItem[] = [
   {

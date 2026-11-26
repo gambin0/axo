@@ -12,6 +12,8 @@ const HOUR = 3600, DAY = 86400;
 
 /** Cage layout in view pixels. GROUND is the top of the bedding. */
 export const GROUND = 116;
+/** A decoration this close to the top of the bedding stands on it, behind the hamster and in its reach. */
+export const onBedding = (y: number): boolean => y <= GROUND + 3;
 export const CAGE = { left: 8, right: 312, top: 10, bottom: 178 };
 export const SPOT = { house: 33, entrance: 96, bowl: 128, chew: 166, bath: 210, wheel: 262, bottle: 284 };
 export const WHEEL = { x: 262, y: 74, r: 31 };
@@ -662,9 +664,9 @@ export class Hamster {
     else this.goTo({ kind: 'surface', x: this.rng.range(CAGE.left + 20, SPOT.bottle - 10) }, 'idle');
   }
 
-  /** The log, if it is out on the bedding where the hamster can get to it (not along the front). */
+  /** The log, if it is out on top of the bedding where the hamster can get to it (not down at the front). */
   log(): Placed | undefined {
-    return this.s.decor.find((d) => d.id === 'log' && d.y === GROUND);
+    return this.s.decor.find((d) => d.id === 'log' && onBedding(d.y) && d.x > CAGE.left + 24 && d.x < SPOT.bottle - 4);
   }
 
   private goToSleep(): void {

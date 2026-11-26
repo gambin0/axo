@@ -6,8 +6,8 @@ import { DECOR_HEIGHT } from './model';
 const STONE = [0x6a6a70, 0x8a8a90, 0xaaaab0, 0xcacad0];
 const TIN = [0x3a6a7a, 0x4e8aa0, 0x6aaac0, 0x9ad0e0];
 
-/** Along the grass at the front of the garden, below the flower bed. */
-export const HIVE_DECOR_AREAS: DecorArea[] = [{ x0: 134, x1: 314, y: 176 }];
+/** Anywhere on the grass at the front of the garden, below the flower bed. */
+export const HIVE_DECOR_AREAS: DecorArea[] = [{ x0: 134, x1: 314, y: 170, y1: 177 }];
 
 /** A soft shadow on the grass. */
 function shadow(sf: Surface, x: number, y: number, w: number): void {

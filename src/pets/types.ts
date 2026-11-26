@@ -72,8 +72,12 @@ export interface DecorPicker {
   readonly max: number;
   count(): number;
   options(): DecorOption[];
-  /** Put it out, or away if it is out already. */
+  /** Put it out straight away, or away if it is out already. */
   toggle(id: string): 'added' | 'removed' | 'full' | 'locked' | 'room';
+  /** Take it out to be put down with the next tap on the floor, or away if it is out already. */
+  pick(id: string): 'placing' | 'removed' | 'full' | 'locked';
+  /** The one picked and waiting for a tap, if any. */
+  readonly placing: string | null;
 }
 
 /** One habitat: a pet's simulation plus how it draws and responds to touch. */

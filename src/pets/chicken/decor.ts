@@ -9,10 +9,10 @@ const CLAY = [0x7a3a1e, 0xa4502a, 0xc4683a, 0xdc8a58];
 const STONE = [0x6a6e76, 0x8a8e96, 0xaab0b6, 0xccd0d4];
 const PUMPKIN = [0x9a3e0a, 0xc85a14, 0xe87a22, 0xf89a44];
 
-/** Where decorations can stand: under the hen house, and along the grass at the front of the run. */
+/** Where decorations can stand: under the hen house, and anywhere on the grass at the front of the run. */
 export const COOP_DECOR_AREAS: DecorArea[] = [
   { x0: 238, x1: 300, y: GROUND },
-  { x0: 12, x1: 308, y: 175 },
+  { x0: 12, x1: 308, y: 160, y1: 177 },
 ];
 
 /** A round blob, filled with a ramp lit from the top left. */

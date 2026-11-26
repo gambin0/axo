@@ -8,7 +8,7 @@ import { DecorBox, DECORATE_TOOL, unlockText } from '../decor';
 import { COATS, drawHamster, type HamPoseName } from './art';
 import { CAGE_DECOR, CAGE_DECOR_AREAS, cagePreviewBg } from './decor';
 import {
-  BOTTLE, CAGE, GROUND, HAM, Hamster, NEST, newHamsterState, polyPrefix, SPOT, STORE, SWEETS, TREATS, TUBE, tubePath, TUNNELS, tunnelOpen,
+  BOTTLE, CAGE, GROUND, HAM, Hamster, NEST, newHamsterState, onBedding, polyPrefix, SPOT, STORE, SWEETS, TREATS, TUBE, tubePath, TUNNELS, tunnelOpen,
   WHEEL, type Pt,
 } from './model';
 
@@ -785,7 +785,7 @@ export class CageHabitat implements Habitat {
       }
     }
     // decorations on the bedding stand behind the hamster
-    this.decorBox.draw(sf, time, (p) => p.y <= GROUND);
+    this.decorBox.draw(sf, time, (p) => onBedding(p.y));
     this.drawFood(sf, time);
     this.drawWheel(sf);
     this.drawBottle(sf, s.bottle, time);
@@ -821,7 +821,7 @@ export class CageHabitat implements Habitat {
     // the tube goes over the hamster so it can be seen inside
     if (m.can('tube')) for (const p of this.tubePixels()) sf.blend(p.x, p.y, p.c, p.a);
     // decorations along the front, by the glass
-    this.decorBox.draw(sf, time, (p) => p.y > GROUND);
+    this.decorBox.draw(sf, time, (p) => !onBedding(p.y));
     if (this.tool === 'decorate') this.decorBox.drawDecorating(sf, time);
     if (this.holding && m.finger && s.state !== 'climb') this.drawFinger(sf, m.finger);
     this.particles.render(sf);

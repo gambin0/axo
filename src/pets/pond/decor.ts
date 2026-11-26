@@ -7,8 +7,8 @@ const ROCK = [0x4a5048, 0x626a5e, 0x7e8876, 0x9aa890];
 const MOSS = [0x2e5a2a, 0x3e7a34, 0x5a9a44];
 const IRON = [0x2a1c14, 0x4e3222, 0x7a4c30, 0xa86c44];
 
-/** Along the muddy bottom of the pond, up to where the stone bank rises. */
-export const POND_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 216, y: 160 }];
+/** Anywhere on the muddy bottom of the pond, up to where the stone bank rises. */
+export const POND_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 216, y: 158, y1: 172 }];
 
 export const POND_DECOR: DecorItem[] = [
   {

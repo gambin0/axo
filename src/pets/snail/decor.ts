@@ -5,8 +5,8 @@ import type { DecorArea, DecorItem } from '../decor';
 const PEBBLE = [0x6a6670, 0x8a8690, 0xaaa6b0, 0xd0ccd4];
 const PLANK = [0x5e3e20, 0x8a5e32, 0xb8844a, 0xd8a868];
 
-/** Along the soil at the front of the terrarium, below where the snails crawl. */
-export const SNAIL_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 306, y: 170 }];
+/** Anywhere on the soil in front of where the snails crawl. */
+export const SNAIL_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 306, y: 152, y1: 172 }];
 
 function shadow(sf: Surface, x: number, y: number, w: number): void {
   for (let dx = -w; dx <= w; dx++) sf.blend(x + dx, y, 0x1a0e06, 0.35 * (1 - (dx / (w + 1)) ** 2));

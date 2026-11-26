@@ -8,6 +8,7 @@ import { DecorBox, MAX_DECOR, type DecorArea, type DecorItem, type Placed } from
 import type { Habitat } from '../pets/types';
 import { CAGE_DECOR, CAGE_DECOR_AREAS } from '../pets/hamster/decor';
 import { CageHabitat } from '../pets/hamster/cage';
+import { GROUND as GROUND_CAGE } from '../pets/hamster/model';
 import { HIVE_DECOR, HIVE_DECOR_AREAS } from '../pets/bees/decor';
 import { HiveHabitat } from '../pets/bees/hive';
 import { TANK_DECOR, TANK_DECOR_AREAS } from '../pets/crab/decor';
@@ -33,13 +34,14 @@ const NIGHT_LAMP = envAt(22);
 const item = (id: string, w: number, need = 0): DecorItem => ({ id, icon: '', label: id, w, h: 10, need, draw: (sf, x, y) => sf.px(x, y - 1, 0xffffff) });
 const ITEMS = [item('a', 20), item('b', 20), item('c', 20), item('d', 20), item('e', 20), item('big', 60), item('later', 10, 30)];
 
-function box(placed: Placed[] = [], level = 0, areas = [{ x0: 0, x1: 100, y: 50 }]) {
+function box(placed: Placed[] = [], level = 0, areas: DecorArea[] = [{ x0: 0, x1: 100, y: 50 }]) {
   const state = { placed, level };
   return { b: new DecorBox({ items: ITEMS, areas, placed: () => state.placed, level: () => state.level, previewBg: () => {} }), state };
 }
 
-const overlaps = (b: DecorBox) =>
-  b.placed.some((p, i) => b.placed.some((q, j) => i < j && p.y === q.y && Math.abs(p.x - q.x) < (b.item(p.id)!.w + b.item(q.id)!.w) / 2));
+/** Inside one of the floor patches, footprint and all. */
+const onFloor = (areas: DecorArea[], at: Placed, w: number) =>
+  areas.some((a) => at.y >= a.y && at.y <= (a.y1 ?? a.y) && at.x - w / 2 >= a.x0 && at.x + w / 2 <= a.x1);
 
 /** Every pet with decorations: how to make one, and how to give it progress. */
 const PETS: { name: string; make: (saved: unknown, seed: number) => Habitat; items: DecorItem[]; areas: DecorArea[]; earn: (h: Habitat, v: number) => void; prep?: (h: Habitat) => void; starts?: number }[] = [
@@ -74,23 +76,44 @@ describe('decorations', () => {
     expect(b.count()).toBe(0);
   });
 
-  test('never overlap, and stay inside their floor', () => {
-    const { b } = box([], 0, [{ x0: 0, x1: 200, y: 50 }]);
-    for (const id of ['a', 'b', 'c', 'd']) expect(b.toggle(id)).toBe('added');
-    expect(overlaps(b)).toBe(false);
-    for (const p of b.placed) {
-      expect(p.x - 10).toBeGreaterThanOrEqual(0);
-      expect(p.x + 10).toBeLessThanOrEqual(200);
-    }
+  test('picked, then put down right where the ground is tapped, even in front of another', () => {
+    const areas = [{ x0: 0, x1: 200, y: 50, y1: 80 }];
+    const { b } = box([], 0, areas);
+    expect(b.pick('a')).toBe('placing');
+    expect(b.placing).toBe('a');
+    expect(b.count()).toBe(0);
+    expect(b.pointer('down', 60, 70)).toBe(true);
+    b.pointer('up', 60, 70);
+    expect(b.placing).toBeNull();
+    expect(b.placed).toEqual([{ id: 'a', x: 60, y: 70 }]);
+    // a tap up on the wall puts it on the nearest bit of floor
+    b.pick('b');
+    b.pointer('down', 500, 10);
+    b.pointer('up', 500, 10);
+    expect(b.placed.find((p) => p.id === 'b')).toEqual({ id: 'b', x: 190, y: 50 });
+    // right on top of another is fine: it just stands in front
+    b.pick('c');
+    b.pointer('down', 62, 75);
+    b.pointer('up', 62, 75);
+    expect(b.placed.find((p) => p.id === 'c')).toEqual({ id: 'c', x: 62, y: 75 });
+    for (const p of b.placed) expect(onFloor(areas, p, 20)).toBe(true);
+    // the front one is the one a tap picks up
+    expect(b.hit(61, 68)?.id).toBe('c');
+    // picking one that is out puts it away
+    expect(b.pick('a')).toBe('removed');
+    expect(b.count()).toBe(2);
   });
 
   test('no more than four, nothing locked, and no room is said so', () => {
     const { b, state } = box([], 0, [{ x0: 0, x1: 400, y: 50 }]);
     for (const id of ['a', 'b', 'c', 'd']) b.toggle(id);
     expect(b.toggle('e')).toBe('full');
+    expect(b.pick('e')).toBe('full');
+    expect(b.placing).toBeNull();
     expect(b.count()).toBe(MAX_DECOR);
     b.toggle('d');
     expect(b.toggle('later')).toBe('locked');
+    expect(b.pick('later')).toBe('locked');
     expect(b.options().find((o) => o.id === 'later')).toMatchObject({ locked: true, progress: 0 });
     state.level = 15;
     expect(b.options().find((o) => o.id === 'later')?.progress).toBeCloseTo(0.5);
@@ -100,29 +123,32 @@ describe('decorations', () => {
     expect(small.toggle('big')).toBe('room');
   });
 
-  test('dragged along the floor, sliding up against a neighbour rather than onto it', () => {
-    const { b } = box([{ id: 'a', x: 20, y: 50 }, { id: 'b', x: 80, y: 50 }]);
+  test('dragged anywhere on the floor, keeping hold where the finger took it', () => {
+    const { b } = box([{ id: 'a', x: 20, y: 50 }, { id: 'b', x: 80, y: 50 }], 0, [{ x0: 0, x1: 100, y: 50, y1: 70 }]);
     expect(b.pointer('down', 21, 45)).toBe(true);
     expect(b.held?.id).toBe('a');
-    // over the top of b: it stops beside it
-    b.pointer('move', 78, 45);
-    expect(Math.abs(b.held!.x - 80)).toBeGreaterThanOrEqual(20);
-    b.pointer('up', 78, 45);
+    // down the floor and over b: it goes there, in front of b
+    b.pointer('move', 78, 60);
+    expect(b.held).toMatchObject({ x: 77, y: 65 });
+    b.pointer('up', 78, 60);
     expect(b.held).toBeNull();
-    expect(b.count()).toBe(2);
-    expect(overlaps(b)).toBe(false);
+    expect(b.placed.find((p) => p.id === 'a')).toEqual({ id: 'a', x: 77, y: 65 });
+    // never past the edge of the floor
+    b.pointer('down', 77, 62);
+    b.pointer('move', 300, 300);
+    b.pointer('up', 300, 300);
+    expect(b.placed.find((p) => p.id === 'a')).toEqual({ id: 'a', x: 90, y: 70 });
     // a tap on nothing is not taken
     expect(b.pointer('down', 50, 5)).toBe(false);
   });
 
-  test('a messy save is tidied: unknown items, doubles, too many and overlaps go', () => {
+  test('a messy save is tidied: unknown items, doubles and too many go, and strays come back onto the floor', () => {
     const saved = [
       { id: 'a', x: 30, y: 50 }, { id: 'a', x: 70, y: 50 }, { id: 'nope', x: 10, y: 50 }, { id: 'b', x: 31, y: 50 },
       { id: 'c', x: 500, y: 9 }, null, { id: 'd', x: 90, y: 50 }, { id: 'e', x: 60, y: 50 },
     ] as unknown as Placed[];
     const { b } = box(saved, 0, [{ x0: 0, x1: 120, y: 50 }]);
     expect(b.placed.map((p) => p.id).sort()).toEqual(['a', 'b', 'c', 'd']);
-    expect(overlaps(b)).toBe(false);
     expect(b.placed.every((p) => p.y === 50 && p.x >= 10 && p.x <= 110)).toBe(true);
   });
 });
@@ -145,7 +171,7 @@ describe('decorations in the coop and the cage', () => {
       const saved = h.serialize() as { decor: Placed[] };
       for (const o of k.items) {
         const at = saved.decor.find((d) => d.id === o.id)!;
-        expect(k.areas.some((a) => a.y === at.y && at.x - o.w / 2 >= a.x0 && at.x + o.w / 2 <= a.x1)).toBe(true);
+        expect(onFloor(k.areas, at, o.w)).toBe(true);
       }
       const back = k.make(JSON.parse(JSON.stringify(saved)), 2);
       expect(back.decor!().count()).toBe(k.items.length);
@@ -159,21 +185,23 @@ describe('decorations in the coop and the cage', () => {
     const h = new CageHabitat(null, 3);
     h.name = 'Pal';
     const m = h.model;
-    h.decor().toggle('log');
-    const p = m.s.decor[0];
     h.useTool('decorate');
+    // picked, then put down where the bedding is tapped
+    expect(h.decor().pick('log')).toBe('placing');
+    h.pointer('down', 200, 150);
+    h.pointer('up', 200, 150);
+    const p = m.s.decor[0];
+    expect(p).toEqual({ id: 'log', x: 200, y: 150 });
     const trust = m.s.trust;
     // tap the hamster: nothing happens to it
     h.pointer('down', m.s.x, m.s.y - 6);
     h.pointer('up', m.s.x, m.s.y - 6);
     expect(m.s.trust).toBe(trust);
-    // drag the log along the front
-    const front = CAGE_DECOR_AREAS[1];
+    // drag the log over to the right, down by the front
     h.pointer('down', p.x, p.y - 5);
-    h.pointer('move', 280, front.y);
-    h.pointer('up', 280, front.y);
-    expect(m.s.decor[0]).toMatchObject({ id: 'log', y: front.y });
-    expect(Math.abs(m.s.decor[0].x - 280)).toBeLessThan(15);
+    h.pointer('move', 280, 165);
+    h.pointer('up', 280, 165);
+    expect(m.s.decor[0]).toEqual({ id: 'log', x: 280, y: 170 });
   });
 
   test('renders: every item in its picker, and a decorated coop and cage', () => {
@@ -329,7 +357,7 @@ describe('animals use their decorations', () => {
     const m = h.model;
     // awake and playful: evening, plenty of food and water, not wanting the wheel
     const EVE = envAt(21);
-    m.s.decor.push({ id: 'log', x: 72, y: CAGE_DECOR_AREAS[0].y });
+    m.s.decor.push({ id: 'log', x: 72, y: GROUND_CAGE });
     let inside = 0, outFar = 0;
     let was = '';
     for (let i = 0; i < 60 * 400; i++) {
@@ -343,7 +371,7 @@ describe('animals use their decorations', () => {
     expect(outFar).toBeGreaterThan(0);
     expect(h.drainEvents().some((e) => e.type === 'toast' && e.text.includes('ran into the log'))).toBe(true);
     // the same log along the front is out of reach
-    m.s.decor.splice(0, 1, { id: 'log', x: 250, y: CAGE_DECOR_AREAS[1].y });
+    m.s.decor.splice(0, 1, { id: 'log', x: 250, y: CAGE_DECOR_AREAS[0].y1! });
     expect(m.log()).toBeUndefined();
   });
 

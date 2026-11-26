@@ -3,15 +3,9 @@ import { dither, mix, type Surface } from '../../render/surface';
 import type { DecorArea, DecorItem } from '../decor';
 import { DECOR_HEIGHT } from './model';
 
-/**
- * Gaps along the jar's floor: either side of the orange slice, between the pot and the
- * flowers, and past the last flower.
- */
+/** Anywhere along the jar's floor. */
 export const JAR_DECOR_AREAS: DecorArea[] = [
-  { x0: 22, x1: 48, y: 160 },
-  { x0: 68, x1: 102, y: 160 },
-  { x0: 140, x1: 186, y: 160 },
-  { x0: 278, x1: 300, y: 160 },
+  { x0: 18, x1: 302, y: 160 },
 ];
 
 function shadow(sf: Surface, x: number, y: number, w: number): void {

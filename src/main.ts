@@ -15,6 +15,7 @@ import { CageHabitat } from './pets/hamster/cage';
 import { CoopHabitat } from './pets/chicken/coop';
 import { PondHabitat } from './pets/pond/pond';
 import { TerrariumHabitat } from './pets/snail/terrarium';
+import { placeText } from './pets/decor';
 import type { DropHint, Habitat, Looks, PetId, Tool } from './pets/types';
 import { Surface, VIEW_H, VIEW_W } from './render/surface';
 import { el, fitCanvas, holdButton, present, Toasts } from './render/ui';
@@ -214,6 +215,13 @@ app.append(home, habitatScreen, toasts.root);
 function open(id: PetId | null): void {
   unlock();
   if (id && !habitats[id].name) return nameDialog(id);
+  // leaving a habitat puts decorating away, so its guide lines aren't still there next visit
+  // (the toolbar can be off the bottom of a short window, hiding that Decorate is still on)
+  const left = active && active !== id ? habitats[active] : null;
+  if (left?.tool === 'decorate') {
+    const first = left.tools().find((t) => t.kind === 'mode' && t.id !== 'decorate');
+    if (first) left.useTool(first.id);
+  }
   active = id;
   home.hidden = id !== null;
   habitatScreen.hidden = id === null;
@@ -495,7 +503,7 @@ function decorDialog(id: PetId): void {
   const h = habitats[id];
   const box = h.decor?.();
   if (!box) return;
-  const head = 'Decorate! Tap something to put it out, or tap it again to put it away.';
+  const head = 'Decorate! Pick something, then tap the ground where it goes. Tap one with a tick to put it away.';
   const ask = readable(head);
   const note = el('p', { class: 'news', 'aria-live': 'polite' });
   const say = (text: string) => {
@@ -521,18 +529,18 @@ function decorDialog(id: PetId): void {
         const b = el('button', { type: 'button', class: o.locked ? 'locked' : '', 'aria-pressed': String(o.placed), 'aria-label': o.label }, ...parts);
         b.addEventListener('click', () => {
           unlock();
-          const r = box.toggle(o.id);
-          if (r === 'added') {
+          const r = box.pick(o.id);
+          if (r === 'placing') {
+            // the dialog gets out of the way so the next tap can say where it goes
             dlg.close();
-            toasts.show(`Here's the ${o.label.toLowerCase()}! With 🎨 picked, drag it to move it.`);
+            if (h.tool !== 'decorate') h.useTool('decorate');
+            toasts.show(placeText(o));
             refreshUi();
-            persist();
             return;
           }
           if (r === 'removed') say(`You put the ${o.label.toLowerCase()} away.`);
           if (r === 'locked') say(`Keep looking after ${h.name} to unlock the ${o.label.toLowerCase()}!`);
           if (r === 'full') say(`There's only room for ${box.max}. Tap one with a tick to put it away first.`);
-          if (r === 'room') say(`There's no room for the ${o.label.toLowerCase()}. Move something over first.`);
           fill();
           persist();
         });

@@ -6,8 +6,8 @@ const SANDC = [0xa8885a, 0xc4a472, 0xdcc08c, 0xeed8a8];
 const CORAL = [0xa83a5a, 0xd85a78, 0xf48aa0, 0xffb8c4];
 const CHEST = [0x4a2a14, 0x6e4220, 0x925c30, 0xb07a44];
 
-/** Along the sand at the front of the tank, below where the crab walks. */
-export const TANK_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 306, y: 168 }];
+/** Anywhere on the sand in front of where the crab walks. */
+export const TANK_DECOR_AREAS: DecorArea[] = [{ x0: 14, x1: 306, y: 146, y1: 173 }];
 
 function shadow(sf: Surface, x: number, y: number, w: number): void {
   for (let dx = -w; dx <= w; dx++) sf.blend(x + dx, y, 0x5a4630, 0.3 * (1 - (dx / (w + 1)) ** 2));
